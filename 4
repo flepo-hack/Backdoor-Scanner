@@ -1364,7 +1364,7 @@ create("TextLabel", {
 	TextColor3 = THEME.dim,
 	TextSize = 9,
 	Font = Enum.Font.Gotham,
-	TextXAlignment = Enum.TextX.Alignment and Enum.TextXAlignment.Left or Enum.TextXAlignment.Left,
+	TextXAlignment = Enum.TextXAlignment.Left,
 	Parent = SetupPage,
 })
 
@@ -1915,7 +1915,7 @@ local function runScan()
 	setStats()
 
 	if #confirmedList > 0 then
-		setStatus(("VALMIS — %d varma(a) backdooria! Avaa EXEC.")format(#confirmedList))
+		setStatus(("VALMIS — %d varma(a) backdooria! Avaa EXEC."):format(#confirmedList))
 		log("GOOD", "skannaus valmis: " .. #confirmedList .. " varmaa " .. string.format("%.1fs", elapsed))
 	else
 		setStatus("Valmis — ei löytynyt hyödyllisiä remoteja. Kokeile HIGH.")
