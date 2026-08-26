@@ -7,7 +7,7 @@ local SoundService = game:GetService("SoundService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerName = LocalPlayer.Name
 
-local VERSION = "4.2 EN ADVANCED"
+local VERSION = "4.3 ADVANCED"
 
 local ROOT_W = 470
 local ROOT_H = 370
@@ -32,6 +32,8 @@ local CONFIG = {
 	MaxHitsPerScan = 3,
 	HintMessage = "...JzScanner... backdoor detected in this game! 🔍",
 	SoundId = "rbxassetid://6042053626",
+	HistoryFile = "JzScanner_history.json",
+	HistoryCap = 50,
 }
 
 local THEME = {
@@ -267,6 +269,7 @@ local function toast(title, body, color)
 		BackgroundColor3 = THEME.panel,
 		BackgroundTransparency = 0.05,
 		BorderSizePixel = 0,
+		ZIndex = 41,
 		Parent = parentGui,
 	})
 	corner(card, 10)
@@ -280,6 +283,7 @@ local function toast(title, body, color)
 		TextSize = 14,
 		Font = Enum.Font.GothamBold,
 		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 42,
 		Parent = card,
 	})
 	create("TextLabel", {
@@ -292,6 +296,7 @@ local function toast(title, body, color)
 		Font = Enum.Font.Gotham,
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 42,
 		Parent = card,
 	})
 	local list = parentGui:FindFirstChild("ToastStack")
@@ -300,8 +305,11 @@ local function toast(title, body, color)
 			Name = "ToastStack",
 			AnchorPoint = Vector2.new(0.5, 0),
 			Position = UDim2.new(0.5, 0, 0, 10),
-			Size = UDim2.new(0, 350, 0, 500),
+			Size = UDim2.new(0, 350, 0, 0),
 			BackgroundTransparency = 1,
+			Active = false,
+			AutomaticSize = Enum.AutomaticSize.Y,
+			ZIndex = 40,
 			Parent = parentGui,
 		})
 		create("UIListLayout", {
@@ -347,6 +355,7 @@ local function bigBanner(mainText, subText, color)
 		BackgroundColor3 = THEME.bg,
 		BackgroundTransparency = 0.04,
 		BorderSizePixel = 0,
+		Active = false,
 		ZIndex = 50,
 		Parent = parentGui,
 	})
@@ -411,7 +420,6 @@ local Root = create("Frame", {
 	BackgroundColor3 = THEME.bg,
 	BackgroundTransparency = 0.03,
 	BorderSizePixel = 0,
-	Active = true,
 	Parent = parentGui,
 })
 corner(Root, 12)
@@ -525,11 +533,12 @@ UI.StatusRight = create("TextLabel", {
 local pages = {}
 local tabButtons = {}
 local TAB_DEFS = {
-	{ id = "scan", label = "🔍 SCAN" },
-	{ id = "exec", label = "💥 EXEC" },
-	{ id = "reqs", label = "💡 REQ" },
-	{ id = "logs", label = "📜 LOG" },
-	{ id = "setup", label = "⚙ SET" },
+	{ id = "scan", label = "🔍SCAN" },
+	{ id = "exec", label = "💥EXEC" },
+	{ id = "reqs", label = "💡REQ" },
+	{ id = "games", label = "⭐SAVED" },
+	{ id = "logs", label = "📜LOG" },
+	{ id = "setup", label = "⚙SET" },
 }
 
 local activeTab = "scan"
@@ -552,11 +561,11 @@ end
 
 for i, def in ipairs(TAB_DEFS) do
 	local btn = create("TextButton", {
-		Size = UDim2.new(0.2, -4, 1, 0),
+		Size = UDim2.new(1 / #TAB_DEFS, -3, 1, 0),
 		BackgroundColor3 = THEME.panel2,
 		Text = def.label,
 		TextColor3 = THEME.text,
-		TextSize = 10,
+		TextSize = 9,
 		Font = Enum.Font.GothamBold,
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
@@ -659,6 +668,155 @@ local function harvestRequireIds(obj, found, counters)
 			end
 		end
 	end
+end
+
+local History
+do
+	local cache = {}
+	local persistOk = nil
+
+	local function loadStore()
+		pcall(function()
+			if readfile and isfile and isfile(CONFIG.HistoryFile) then
+				local raw = readfile(CONFIG.HistoryFile)
+				local data = HttpService:JSONDecode(raw)
+				if type(data) == "table" then
+					cache = data
+				end
+			end
+		end)
+	end
+
+	local function saveStore()
+		pcall(function()
+			if writefile then
+				writefile(CONFIG.HistoryFile, HttpService:JSONEncode(cache))
+				persistOk = true
+			else
+				persistOk = false
+			end
+		end)
+	end
+
+	loadStore()
+
+	local function sortByNewest()
+		table.sort(cache, function(a, b)
+			return (a.last or 0) > (b.last or 0)
+		end)
+	end
+
+	local function findByPlace(pid)
+		for _, e in ipairs(cache) do
+			if e.placeId == pid then
+				return e
+			end
+		end
+		return nil
+	end
+
+	local function fetchGameName(pid)
+		local ok, info = pcall(function()
+			return game:GetService("MarketplaceService"):GetProductInfo(pid)
+		end)
+		if ok and type(info) == "table" and info.Name then
+			return info.Name
+		end
+		return nil
+	end
+
+	History = {
+		GetAll = function()
+			return cache
+		end,
+
+		IsPersisted = function()
+			return persistOk ~= false
+		end,
+
+		Record = function(remotePath, className)
+			local pid = game.PlaceId
+			local entry = findByPlace(pid)
+			if not entry then
+				entry = {
+					placeId = pid,
+					name = nil,
+					remotes = {},
+					reqs = {},
+					last = 0,
+				}
+				table.insert(cache, entry)
+			end
+			entry.last = os.time()
+			if not entry.name then
+				entry.name = fetchGameName(pid)
+			end
+			if #entry.remotes < 25 and not table.find(entry.remotes, remotePath) then
+				table.insert(entry.remotes, remotePath .. " [" .. tostring(className) .. "]")
+			end
+			sortByNewest()
+			while #cache > CONFIG.HistoryCap do
+				table.remove(cache)
+			end
+			saveStore()
+			if UI.renderHistory then
+				UI.renderHistory()
+			end
+			return entry
+		end,
+
+		AttachRequires = function(idList)
+			local entry = findByPlace(game.PlaceId)
+			if not entry then
+				return
+			end
+			entry.reqs = {}
+			for i, rq in ipairs(idList) do
+				if i > 10 then
+					break
+				end
+				table.insert(entry.reqs, rq.id)
+			end
+			saveStore()
+		end,
+
+		RefreshNames = function()
+			task.spawn(function()
+				local changed = false
+				for _, e in ipairs(cache) do
+					if not e.name then
+						local n = fetchGameName(e.placeId)
+						if n then
+							e.name = n
+							changed = true
+						end
+						task.wait(0.3)
+					end
+				end
+				if changed then
+					saveStore()
+					if UI.renderHistory and not State.destroyed then
+						UI.renderHistory()
+					end
+				end
+			end)
+		end,
+
+		Remove = function(placeId)
+			for i, e in ipairs(cache) do
+				if e.placeId == placeId then
+					table.remove(cache, i)
+					break
+				end
+			end
+			saveStore()
+		end,
+
+		ClearAll = function()
+			cache = {}
+			saveStore()
+		end,
+	}
 end
 
 local function rebuildTargets()
@@ -1025,7 +1183,7 @@ UI.SensBtn = create("TextButton", {
 	BackgroundColor3 = THEME.panel2,
 	Text = "SENSITIVITY: MEDIUM",
 	TextColor3 = THEME.text,
-	TextSize = 12,
+	TextSize = 11,
 	Font = Enum.Font.GothamBold,
 	BorderSizePixel = 0,
 	AutoButtonColor = false,
@@ -1111,7 +1269,6 @@ UI.FilterBtn = create("TextButton", {
 	Font = Enum.Font.GothamBold,
 	BorderSizePixel = 0,
 	AutoButtonColor = false,
-	TextScaled = false,
 	Parent = ScanPage,
 })
 corner(UI.FilterBtn, 4)
@@ -1398,6 +1555,192 @@ create("UIListLayout", {
 	Parent = UI.ReqsFrame,
 })
 
+local GamesPage = pages.games
+
+create("TextLabel", {
+	Size = UDim2.new(1, -150, 0, 12),
+	BackgroundTransparency = 1,
+	Text = "Saved games where usable server-side remotes were confirmed.",
+	TextColor3 = THEME.dim,
+	TextSize = 9,
+	Font = Enum.Font.Gotham,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = GamesPage,
+})
+
+UI.HistCountLbl = create("TextLabel", {
+	Size = UDim2.new(1, -160, 0, 26),
+	Position = UDim2.new(0, 0, 0, 14),
+	BackgroundTransparency = 1,
+	Text = "",
+	TextColor3 = THEME.dim,
+	TextSize = 10,
+	Font = Enum.Font.Code,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	VerticalCenter = true,
+	Parent = GamesPage,
+})
+
+UI.ClearHistBtn = create("TextButton", {
+	Size = UDim2.new(0, 148, 0, 24),
+	Position = UDim2.new(1, -148, 0, 14),
+	BackgroundColor3 = THEME.btn,
+	Text = "🗑 CLEAR ALL",
+	TextColor3 = THEME.text,
+	TextSize = 10,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Parent = GamesPage,
+})
+corner(UI.ClearHistBtn, 6)
+hoverify(UI.ClearHistBtn, THEME.btn, THEME.btnHover)
+
+UI.HistFrame = create("ScrollingFrame", {
+	Size = UDim2.new(1, 0, 1, -48),
+	Position = UDim2.new(0, 0, 0, 48),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 5,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	Parent = GamesPage,
+})
+create("UIListLayout", {
+	Padding = UDim.new(0, 5),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Parent = UI.HistFrame,
+})
+
+local function renderHistory()
+	for _, c in ipairs(UI.HistFrame:GetChildren()) do
+		if c:IsA("Frame") then
+			c:Destroy()
+		end
+	end
+	local all = History.GetAll()
+	UI.HistCountLbl.Text = #all
+		.. " saved game(s)"
+		.. (History.IsPersisted() and " · stored on disk" or " · memory only (no writefile)")
+	for i, e in ipairs(all) do
+		local row = create("Frame", {
+			Size = UDim2.new(1, -6, 0, 46),
+			BackgroundColor3 = THEME.panel,
+			BackgroundTransparency = 0.1,
+			BorderSizePixel = 0,
+			LayoutOrder = i,
+			Parent = UI.HistFrame,
+		})
+		corner(row, 7)
+		create("TextLabel", {
+			Size = UDim2.new(1, -220, 0, 17),
+			Position = UDim2.new(0, 8, 0, 3),
+			BackgroundTransparency = 1,
+			Text = (e.name or ("Place " .. tostring(e.placeId))) .. "  #" .. tostring(e.placeId),
+			TextColor3 = THEME.text,
+			TextSize = 12,
+			Font = Enum.Font.GothamBold,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = row,
+		})
+		local firstRemote = (e.remotes and e.remotes[1]) or "-"
+		create("TextLabel", {
+			Size = UDim2.new(1, -220, 0, 12),
+			Position = UDim2.new(0, 8, 0, 20),
+			BackgroundTransparency = 1,
+			Text = #e.remotes
+				.. " usable remote(s) · "
+				.. (#e.reqs > 0 and (#e.reqs .. " reqs · ") or "")
+				.. os.date("%d.%m.%Y %H:%M", e.last),
+			TextColor3 = THEME.dim,
+			TextSize = 9,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = row,
+		})
+		create("TextLabel", {
+			Size = UDim2.new(1, -220, 0, 11),
+			Position = UDim2.new(0, 8, 0, 33),
+			BackgroundTransparency = 1,
+			Text = firstRemote,
+			TextColor3 = THEME.accent2,
+			TextSize = 8,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = row,
+		})
+		local copyB = create("TextButton", {
+			Size = UDim2.new(0, 92, 0, 26),
+			Position = UDim2.new(1, -160, 0.5, -13),
+			BackgroundColor3 = THEME.accent,
+			Text = "📋 COPY",
+			TextColor3 = Color3.fromRGB(8, 10, 12),
+			TextSize = 10,
+			Font = Enum.Font.GothamBold,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Parent = row,
+		})
+		corner(copyB, 6)
+		hoverify(copyB, THEME.accent, Color3.fromRGB(0, 190, 172))
+		local delB = create("TextButton", {
+			Size = UDim2.new(0, 54, 0, 26),
+			Position = UDim2.new(1, -60, 0.5, -13),
+			BackgroundColor3 = THEME.bad,
+			Text = "DEL",
+			TextColor3 = Color3.new(1, 1, 1),
+			TextSize = 10,
+			Font = Enum.Font.GothamBold,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Parent = row,
+		})
+		corner(delB, 6)
+		hoverify(delB, THEME.bad, Color3.fromRGB(120, 40, 48))
+
+		copyB.MouseButton1Click:Connect(function()
+			local lines = { "# JzScanner — " .. (e.name or ("Place " .. tostring(e.placeId))) }
+			for _, rp in ipairs(e.remotes) do
+				table.insert(lines, rp)
+			end
+			if #e.reqs > 0 then
+				table.insert(lines, "-- requires:")
+				for _, rid in ipairs(e.reqs) do
+					table.insert(lines, "require(" .. rid .. ')("' .. PlayerName .. '")')
+				end
+			end
+			if copyText(table.concat(lines, "\n")) then
+				toast("📋 Copied", #e.remotes .. " remotes + " .. #e.reqs .. " requires", THEME.accent)
+			else
+				toast("⚠ No clipboard API", "This executor lacks setclipboard.", THEME.warn)
+			end
+		end)
+		delB.MouseButton1Click:Connect(function()
+			History.Remove(e.placeId)
+			renderHistory()
+			log("INFO", "removed saved game #" .. tostring(e.placeId))
+		end)
+	end
+	if #all == 0 then
+		create("TextLabel", {
+			Size = UDim2.new(1, -6, 0, 60),
+			BackgroundTransparency = 1,
+			Text = "No saved games yet.\nEvery game where a backdoor confirms\ngets saved here automatically.",
+			TextColor3 = THEME.dim,
+			TextSize = 11,
+			Font = Enum.Font.Gotham,
+			TextWrapped = true,
+			LayoutOrder = 1,
+			Parent = UI.HistFrame,
+		})
+	end
+end
+UI.renderHistory = renderHistory
+
 local LogsPage = pages.logs
 
 create("TextLabel", {
@@ -1554,7 +1897,7 @@ create("TextLabel", {
 	BackgroundTransparency = 1,
 	Text = "JzScanner "
 		.. VERSION
-		.. "\nengine: guid-traced payloads + attribute/instance dual-marker confirmation\nsignals: 39 weighted keywords · random-name detection · invoke responses\ntips: HIGH tests even plain-named remotes · REQ tab harvests game require()s",
+		.. "\nengine: guid-traced payloads + attribute/instance dual-marker confirmation\nsignals: 39 weighted keywords · random-name detection · invoke responses\ngames with confirmed backdoors are remembered in the ⭐SAVED tab",
 	TextColor3 = THEME.dim,
 	TextSize = 10,
 	Font = Enum.Font.Code,
@@ -1600,6 +1943,13 @@ UI.ClearLogsBtn.MouseButton1Click:Connect(function()
 	State.logs = {}
 	renderLogs()
 	log("INFO", "logs cleared")
+end)
+
+UI.ClearHistBtn.MouseButton1Click:Connect(function()
+	History.ClearAll()
+	renderHistory()
+	log("INFO", "saved-games history cleared")
+	toast("🗑 CLEARED", "Saved games removed.", THEME.warn)
 end)
 
 UI.FilterBtn.MouseButton1Click:Connect(function()
@@ -1854,6 +2204,7 @@ local function markFound(m)
 		local ok, fullPath = pcall(function()
 			return m.remote:GetFullName()
 		end)
+		fullPath = ok and fullPath or m.remote.Name
 		log("GOOD", "✅ BACKDOOR CONFIRMED → " .. tostring(fullPath))
 		m.displayReason = "✔ executes code server-side — press EXEC"
 		if State.stats.confirmed == 1 then
@@ -1868,6 +2219,7 @@ local function markFound(m)
 		playSound()
 		renderResults()
 		rebuildTargets()
+		task.spawn(History.Record, tostring(fullPath), m.remote.ClassName)
 		if State.settings.autoHint and not State.hintSentThisScan then
 			State.hintSentThisScan = true
 			hintBroadcast(CONFIG.HintMessage)
@@ -1876,11 +2228,77 @@ local function markFound(m)
 	m.hits = m.hits + 1
 end
 
-local function runScan()
-	if State.scanning then
+local function collectGameRequiresCore()
+	local found = {}
+	local counters = { scanned = 0, readable = 0 }
+	local count = 0
+	for _, obj in ipairs(game:GetDescendants()) do
+		count = count + 1
+		local cn = obj.ClassName
+		if cn == "ModuleScript" or cn == "LocalScript" or cn == "Script" then
+			harvestRequireIds(obj, found, counters)
+		end
+		if count % CONFIG.EnumChunk == 0 then
+			task.wait()
+		end
+	end
+	local list = {}
+	for _, data in pairs(found) do
+		table.insert(list, data)
+	end
+	table.sort(list, function(a, b)
+		if a.count ~= b.count then
+			return a.count > b.count
+		end
+		return a.id < b.id
+	end)
+	while #list > 30 do
+		table.remove(list)
+	end
+	return list, counters
+end
+
+local function collectGameRequires()
+	if State.collecting then
 		return
 	end
-	State.scanning = true
+	State.collecting = true
+	UI.CollectBtn.Text = "⏳ READING..."
+	log("INFO", "harvesting require() ids from game scripts...")
+	local t0 = os.clock()
+	local ok, err = pcall(function()
+		local list, counters = collectGameRequiresCore()
+		State.requires = list
+		renderRequires()
+		if counters.readable == 0 then
+			UI.ReqCountLbl.Text = "no readable Sources in this executor"
+			log("WARN", "Source unreadable — require harvest unavailable here")
+			toast("⚠ NO SOURCE ACCESS", "Executor hides Script.Source — nothing to harvest.", THEME.warn)
+		else
+			UI.ReqCountLbl.Text = #list
+				.. " ids · "
+				.. counters.readable
+				.. "/"
+				.. counters.scanned
+				.. " sources read · "
+				.. string.format("%.1fs", os.clock() - t0)
+			log("GOOD", "harvested " .. #list .. " unique require() ids")
+			toast("💡 HARVEST DONE", #list .. " require(ID)s found in game scripts.", THEME.accent2)
+		end
+	end)
+	State.collecting = false
+	UI.CollectBtn.Text = "🔄 FETCH"
+	if not ok then
+		log("BAD", "require harvest crashed: " .. tostring(err))
+		toast("❌ HARVEST FAILED", tostring(err), THEME.bad)
+	end
+end
+
+UI.CollectBtn.MouseButton1Click:Connect(function()
+	task.spawn(collectGameRequires)
+end)
+
+local function runScanCore()
 	State.hintSentThisScan = false
 	State.stats = { total = 0, probed = 0, confirmed = 0 }
 	State.results = {}
@@ -1889,8 +2307,6 @@ local function runScan()
 	State.targetIndex = 1
 	updateTargetLabel()
 	renderResults()
-	UI.ScanBtn.Text = "⛔ SCANNING..."
-	UI.ScanBtn.BackgroundColor3 = THEME.bad
 	setProgress(0, "Walking the game tree...")
 	log("INFO", "scan started (sensitivity: " .. State.sensitivities[State.sensitivityIndex] .. ")")
 
@@ -2081,7 +2497,6 @@ local function runScan()
 		return a.score > b.score
 	end)
 
-	State.results = order
 	for _, m in ipairs(order) do
 		if m.hits > 0 then
 			table.insert(confirmedList, m)
@@ -2090,8 +2505,8 @@ local function runScan()
 	renderResults()
 	rebuildTargets()
 
-	setProgress(1, ("Done in %.1fs"):format(os.clock() - t0))
 	local elapsed = os.clock() - t0
+	setProgress(1, ("Done in %.1fs"):format(elapsed))
 	UI.StatsLbl.Text = ("done: %d probed | %d confirmed | %.1fs"):format(
 		State.stats.probed,
 		State.stats.confirmed,
@@ -2102,86 +2517,57 @@ local function runScan()
 	if #confirmedList > 0 then
 		setStatus(("DONE — %d confirmed backdoor(s)! Open EXEC."):format(#confirmedList))
 		log("GOOD", "scan done: " .. #confirmedList .. " confirmed in " .. string.format("%.1fs", elapsed))
+		History.AttachRequires(reqList)
 	else
 		setStatus("Done — no exploitable remotes found. Try HIGH.")
 		log("INFO", "scan done: nothing confirmed (" .. string.format("%.1fs", elapsed) .. ")")
 		toast("SCAN COMPLETE", "No confirmed backdoors — try HIGH sensitivity.", THEME.dim)
 	end
+end
 
+local function runScan()
+	if State.scanning then
+		return
+	end
+	State.scanning = true
+	UI.ScanBtn.Text = "⛔ SCANNING..."
+	UI.ScanBtn.BackgroundColor3 = THEME.bad
+	local ok, err = pcall(runScanCore)
+	State.scanning = false
 	UI.ScanBtn.Text = "🔄 SCAN AGAIN"
 	UI.ScanBtn.BackgroundColor3 = THEME.accent
-	State.scanning = false
+	if not ok then
+		setProgress(0, "Scan crashed.")
+		setStatus("Scan crashed — see LOG tab.")
+		log("BAD", "scan error: " .. tostring(err))
+		toast("❌ SCAN CRASHED", tostring(err), THEME.bad)
+	end
 end
 
 UI.ScanBtn.MouseButton1Click:Connect(function()
 	task.spawn(runScan)
 end)
 
-local function collectGameRequires()
-	if State.collecting then
-		return
-	end
-	State.collecting = true
-	UI.CollectBtn.Text = "⏳ READING..."
-	log("INFO", "harvesting require() ids from game scripts...")
-	local t0 = os.clock()
-	local found = {}
-	local counters = { scanned = 0, readable = 0 }
-	local count = 0
-	for _, obj in ipairs(game:GetDescendants()) do
-		count = count + 1
-		local cn = obj.ClassName
-		if cn == "ModuleScript" or cn == "LocalScript" or cn == "Script" then
-			harvestRequireIds(obj, found, counters)
-		end
-		if count % CONFIG.EnumChunk == 0 then
-			task.wait()
-		end
-	end
-	local list = {}
-	for _, data in pairs(found) do
-		table.insert(list, data)
-	end
-	table.sort(list, function(a, b)
-		if a.count ~= b.count then
-			return a.count > b.count
-		end
-		return a.id < b.id
-	end)
-	while #list > 30 do
-		table.remove(list)
-	end
-	State.requires = list
-	renderRequires()
-	State.collecting = false
-	UI.CollectBtn.Text = "🔄 FETCH"
-	if counters.readable == 0 then
-		UI.ReqCountLbl.Text = "no readable Sources in this executor"
-		log("WARN", "Source unreadable — require harvest unavailable here")
-		toast("⚠ NO SOURCE ACCESS", "Executor hides Script.Source — nothing to harvest.", THEME.warn)
-	else
-		UI.ReqCountLbl.Text = #list
-			.. " ids · "
-			.. counters.readable
-			.. "/"
-			.. counters.scanned
-			.. " sources read · "
-			.. string.format("%.1fs", os.clock() - t0)
-		log("GOOD", "harvested " .. #list .. " unique require() ids")
-		toast("💡 HARVEST DONE", #list .. " require(ID)s found in game scripts.", THEME.accent2)
-	end
-end
-
-UI.CollectBtn.MouseButton1Click:Connect(function()
-	task.spawn(collectGameRequires)
-end)
-
 updateTargetLabel()
 renderResults()
 renderLogs()
 renderRequires()
+renderHistory()
 outputLine("> jzscanner " .. VERSION .. " ready")
-log("INFO", "JzScanner " .. VERSION .. " loaded — INSERT toggles UI")
+log(
+	"INFO",
+	"JzScanner "
+		.. VERSION
+		.. " loaded · "
+		.. #History.GetAll()
+		.. " saved game(s)"
+		.. (History.IsPersisted() and "" or " (no writefile)")
+)
+log("INFO", "INSERT toggles UI · title-bar drag moves window · – shrinks to ball")
+
+if #History.GetAll() > 0 then
+	History.RefreshNames()
+end
 
 pcall(function()
 	local genv = getgenv and getgenv() or _G
@@ -2214,6 +2600,13 @@ pcall(function()
 			if not State.collecting then
 				task.spawn(collectGameRequires)
 			end
+		end,
+		GetHistory = function()
+			return History.GetAll()
+		end,
+		ClearHistory = function()
+			History.ClearAll()
+			renderHistory()
 		end,
 		Execute = executeCurrent,
 		Broadcast = hintBroadcast,
