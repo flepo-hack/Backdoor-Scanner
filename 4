@@ -7,7 +7,17 @@ local SoundService = game:GetService("SoundService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerName = LocalPlayer.Name
 
-local VERSION = "4.0 ADVANCED"
+local VERSION = "4.2 EN ADVANCED"
+
+local ROOT_W = 470
+local ROOT_H = 370
+
+local THEMES_LIST = {
+	{ name = "CYAN", c = Color3.fromRGB(0, 240, 220) },
+	{ name = "PURPLE", c = Color3.fromRGB(178, 102, 255) },
+	{ name = "GREEN", c = Color3.fromRGB(70, 235, 130) },
+	{ name = "ORANGE", c = Color3.fromRGB(255, 165, 70) },
+}
 
 local CONFIG = {
 	ProbeDelay = 0.08,
@@ -19,6 +29,7 @@ local CONFIG = {
 	MaxRemotes = 4000,
 	EnumChunk = 750,
 	ExecConfirmWindow = 5,
+	MaxHitsPerScan = 3,
 	HintMessage = "...JzScanner... backdoor detected in this game! 🔍",
 	SoundId = "rbxassetid://6042053626",
 }
@@ -30,7 +41,7 @@ local THEME = {
 	stroke = Color3.fromRGB(70, 70, 100),
 	text = Color3.fromRGB(235, 235, 245),
 	dim = Color3.fromRGB(145, 145, 165),
-	accent = Color3.fromRGB(0, 240, 220),
+	accent = THEMES_LIST[1].c,
 	accent2 = Color3.fromRGB(170, 90, 255),
 	good = Color3.fromRGB(60, 230, 120),
 	warn = Color3.fromRGB(255, 190, 70),
@@ -44,9 +55,13 @@ local State = {
 	scanning = false,
 	executing = false,
 	minimized = false,
+	collecting = false,
 	hintSentThisScan = false,
 	logs = {},
 	results = {},
+	requires = {},
+	resultFilter = "ALL",
+	themeIndex = 1,
 	targetPaths = { "LOCAL" },
 	targetRefs = { nil },
 	targetIndex = 1,
@@ -97,10 +112,19 @@ local KEYWORDS = {
 	["remote"] = 1,
 	["script"] = 1,
 	["load"] = 1,
+	["helios"] = 4,
+	["reaper"] = 3,
+	["astra"] = 3,
+	["quasar"] = 3,
+	["hydra"] = 3,
+	["vortex"] = 2,
+	["phantom"] = 2,
+	["ibackdoor"] = 5,
 }
 
 local UI = {}
 local rgbStrokes = {}
+local accentPaintables = {}
 
 local function newGuid()
 	return HttpService:GenerateGUID(false):gsub("-", "")
@@ -188,12 +212,20 @@ end
 
 local function outputLine(msg)
 	table.insert(State.outBuffer, msg)
-	while #State.outBuffer > 9 do
+	while #State.outBuffer > 7 do
 		table.remove(State.outBuffer, 1)
 	end
 	if UI.outLabel then
 		UI.outLabel.Text = table.concat(State.outBuffer, "\n")
 	end
+end
+
+local function copyText(t)
+	local f = setclipboard or toclipboard
+	if f then
+		return pcall(f, t)
+	end
+	return false
 end
 
 local parentGui
@@ -231,7 +263,7 @@ end
 local function toast(title, body, color)
 	color = color or THEME.accent
 	local card = create("Frame", {
-		Size = UDim2.new(0, 360, 0, 62),
+		Size = UDim2.new(0, 340, 0, 58),
 		BackgroundColor3 = THEME.panel,
 		BackgroundTransparency = 0.05,
 		BorderSizePixel = 0,
@@ -240,23 +272,23 @@ local function toast(title, body, color)
 	corner(card, 10)
 	stroke(card, color, 1.5, 0.25)
 	create("TextLabel", {
-		Size = UDim2.new(1, -20, 0, 24),
-		Position = UDim2.new(0, 10, 0, 6),
+		Size = UDim2.new(1, -20, 0, 22),
+		Position = UDim2.new(0, 10, 0, 5),
 		BackgroundTransparency = 1,
 		Text = title,
 		TextColor3 = color,
-		TextSize = 15,
+		TextSize = 14,
 		Font = Enum.Font.GothamBold,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = card,
 	})
 	create("TextLabel", {
 		Size = UDim2.new(1, -20, 0, 26),
-		Position = UDim2.new(0, 10, 0, 30),
+		Position = UDim2.new(0, 10, 0, 27),
 		BackgroundTransparency = 1,
 		Text = body,
 		TextColor3 = THEME.text,
-		TextSize = 12,
+		TextSize = 11,
 		Font = Enum.Font.Gotham,
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -268,7 +300,7 @@ local function toast(title, body, color)
 			Name = "ToastStack",
 			AnchorPoint = Vector2.new(0.5, 0),
 			Position = UDim2.new(0.5, 0, 0, 10),
-			Size = UDim2.new(0, 370, 0, 500),
+			Size = UDim2.new(0, 350, 0, 500),
 			BackgroundTransparency = 1,
 			Parent = parentGui,
 		})
@@ -310,8 +342,8 @@ local function bigBanner(mainText, subText, color)
 	local b = create("Frame", {
 		Name = "FoundBanner",
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, -110),
-		Size = UDim2.new(0, 500, 0, 86),
+		Position = UDim2.new(0.5, 0, 0, -100),
+		Size = UDim2.new(0, 460, 0, 78),
 		BackgroundColor3 = THEME.bg,
 		BackgroundTransparency = 0.04,
 		BorderSizePixel = 0,
@@ -321,34 +353,34 @@ local function bigBanner(mainText, subText, color)
 	corner(b, 12)
 	stroke(b, color, 2.5, 0.1)
 	create("TextLabel", {
-		Size = UDim2.new(1, -24, 0, 40),
-		Position = UDim2.new(0, 12, 0, 8),
+		Size = UDim2.new(1, -24, 0, 36),
+		Position = UDim2.new(0, 12, 0, 7),
 		BackgroundTransparency = 1,
 		Text = mainText,
 		TextColor3 = color,
-		TextSize = 22,
+		TextSize = 20,
 		Font = Enum.Font.GothamBold,
 		ZIndex = 51,
 		Parent = b,
 	})
 	create("TextLabel", {
-		Size = UDim2.new(1, -24, 0, 28),
-		Position = UDim2.new(0, 12, 0, 50),
+		Size = UDim2.new(1, -24, 0, 26),
+		Position = UDim2.new(0, 12, 0, 45),
 		BackgroundTransparency = 1,
 		Text = subText,
 		TextColor3 = THEME.text,
-		TextSize = 13,
+		TextSize = 12,
 		Font = Enum.Font.Gotham,
 		TextWrapped = true,
 		ZIndex = 51,
 		Parent = b,
 	})
 	TweenService:Create(b, TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-		Position = UDim2.new(0.5, 0, 0, 74),
+		Position = UDim2.new(0.5, 0, 0, 70),
 	}):Play()
 	task.delay(8, function()
 		if b.Parent then
-			local tw = TweenService:Create(b, TweenInfo.new(0.4), { Position = UDim2.new(0.5, 0, 0, -110) })
+			local tw = TweenService:Create(b, TweenInfo.new(0.4), { Position = UDim2.new(0.5, 0, 0, -100) })
 			tw:Play()
 			tw.Completed:Wait()
 			b:Destroy()
@@ -374,171 +406,130 @@ end)
 
 local Root = create("Frame", {
 	Name = "Root",
-	Size = UDim2.new(0, 560, 0, 440),
-	Position = UDim2.new(0.5, -280, 0.5, -220),
+	Size = UDim2.new(0, ROOT_W, 0, ROOT_H),
+	Position = UDim2.new(0.5, -ROOT_W / 2, 0.5, -ROOT_H / 2),
 	BackgroundColor3 = THEME.bg,
 	BackgroundTransparency = 0.03,
 	BorderSizePixel = 0,
 	Active = true,
 	Parent = parentGui,
 })
-corner(Root, 14)
-stroke(Root, THEME.accent, 2, 0.35)
+corner(Root, 12)
+local rootStroke = stroke(Root, THEME.accent, 2, 0.35)
+table.insert(accentPaintables, { inst = rootStroke, prop = "Color" })
 UI.Root = Root
 
 local TitleBar = create("Frame", {
 	Name = "TitleBar",
-	Size = UDim2.new(1, 0, 0, 38),
+	Size = UDim2.new(1, 0, 0, 34),
 	BackgroundTransparency = 1,
 	Active = true,
 	Parent = Root,
 })
 
-create("Frame", {
-	Size = UDim2.new(0, 4, 1, -16),
-	Position = UDim2.new(0, 10, 0, 8),
-	BackgroundColor3 = THEME.accent,
-	BorderSizePixel = 0,
-	Parent = TitleBar,
-})
-
 create("TextLabel", {
-	Size = UDim2.new(0, 260, 1, 0),
-	Position = UDim2.new(0, 24, 0, 0),
+	Size = UDim2.new(0, 300, 1, 0),
+	Position = UDim2.new(0, 12, 0, 0),
 	BackgroundTransparency = 1,
 	Text = "⚡ JzScanner " .. VERSION,
 	TextColor3 = THEME.text,
-	TextSize = 17,
+	TextSize = 15,
 	Font = Enum.Font.GothamBold,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	Parent = TitleBar,
 })
 
-create("TextLabel", {
-	Size = UDim2.new(0, 200, 1, 0),
-	Position = UDim2.new(1, -204, 0, 0),
-	BackgroundTransparency = 1,
-	Text = "advanced backdoor scanner",
-	TextColor3 = THEME.dim,
-	TextSize = 11,
-	Font = Enum.Font.Gotham,
-	TextXAlignment = Enum.TextXAlignment.Right,
-	Visible = false,
-	Parent = TitleBar,
-})
-
 local MinBtn = create("TextButton", {
-	Size = UDim2.new(0, 32, 0, 26),
-	Position = UDim2.new(1, -78, 0, 6),
+	Size = UDim2.new(0, 28, 0, 22),
+	Position = UDim2.new(1, -72, 0, 6),
 	BackgroundColor3 = THEME.btn,
 	Text = "–",
 	TextColor3 = THEME.text,
-	TextSize = 16,
+	TextSize = 15,
 	Font = Enum.Font.GothamBold,
 	BorderSizePixel = 0,
 	AutoButtonColor = false,
 	Parent = TitleBar,
 })
-corner(MinBtn, 7)
+corner(MinBtn, 6)
 hoverify(MinBtn, THEME.btn, THEME.btnHover)
 
 local CloseBtn = create("TextButton", {
-	Size = UDim2.new(0, 32, 0, 26),
-	Position = UDim2.new(1, -40, 0, 6),
+	Size = UDim2.new(0, 28, 0, 22),
+	Position = UDim2.new(1, -36, 0, 6),
 	BackgroundColor3 = THEME.bad,
 	Text = "✕",
 	TextColor3 = Color3.new(1, 1, 1),
-	TextSize = 14,
+	TextSize = 12,
 	Font = Enum.Font.GothamBold,
 	BorderSizePixel = 0,
 	AutoButtonColor = false,
 	Parent = TitleBar,
 })
-corner(CloseBtn, 7)
+corner(CloseBtn, 6)
 hoverify(CloseBtn, THEME.bad, Color3.fromRGB(120, 40, 48))
 
 local TabRow = create("Frame", {
-	Size = UDim2.new(1, -24, 0, 34),
-	Position = UDim2.new(0, 12, 0, 40),
+	Size = UDim2.new(1, -20, 0, 28),
+	Position = UDim2.new(0, 10, 0, 37),
 	BackgroundTransparency = 1,
 	Parent = Root,
 })
 create("UIListLayout", {
 	FillDirection = Enum.FillDirection.Horizontal,
-	Padding = UDim.new(0, 6),
+	Padding = UDim.new(0, 4),
 	SortOrder = Enum.SortOrder.LayoutOrder,
 	Parent = TabRow,
 })
 
 local Content = create("Frame", {
 	Name = "Content",
-	Size = UDim2.new(1, -24, 1, -104),
-	Position = UDim2.new(0, 12, 0, 80),
+	Size = UDim2.new(1, -20, 0, 272),
+	Position = UDim2.new(0, 10, 0, 69),
 	BackgroundTransparency = 1,
 	ClipsDescendants = true,
 	Parent = Root,
 })
 
 local StatusBar = create("Frame", {
-	Size = UDim2.new(1, -24, 0, 22),
-	Position = UDim2.new(0, 12, 1, -26),
+	Size = UDim2.new(1, -20, 0, 20),
+	Position = UDim2.new(0, 10, 1, -23),
 	BackgroundTransparency = 1,
 	Parent = Root,
 })
 
 UI.StatusLeft = create("TextLabel", {
-	Size = UDim2.new(0.6, 0, 1, 0),
+	Size = UDim2.new(0.62, 0, 1, 0),
 	BackgroundTransparency = 1,
-	Text = "idle — press SCAN to hunt backdoors",
+	Text = "Ready — press START SCAN",
 	TextColor3 = THEME.dim,
-	TextSize = 11,
+	TextSize = 10,
 	Font = Enum.Font.Code,
 	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
 	Parent = StatusBar,
 })
 
 UI.StatusRight = create("TextLabel", {
-	Size = UDim2.new(0.4, 0, 1, 0),
-	Position = UDim2.new(0.6, 0, 0, 0),
+	Size = UDim2.new(0.38, 0, 1, 0),
+	Position = UDim2.new(0.62, 0, 0, 0),
 	BackgroundTransparency = 1,
-	Text = "remotes 0 | confirmed 0",
+	Text = "probed 0 | hits 0",
 	TextColor3 = THEME.dim,
-	TextSize = 11,
+	TextSize = 10,
 	Font = Enum.Font.Code,
 	TextXAlignment = Enum.TextXAlignment.Right,
 	Parent = StatusBar,
 })
 
-local dragging = false
-local dragInput, dragStart, startPos
-
-TitleBar.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = true
-		dragStart = input.Position
-		startPos = Root.Position
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
-			end
-		end)
-	end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-		local delta = input.Position - dragStart
-		Root.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-	end
-end)
-
 local pages = {}
 local tabButtons = {}
 local TAB_DEFS = {
-	{ id = "scan", label = "🔍 SCANNER" },
-	{ id = "exec", label = "💥 EXECUTE" },
-	{ id = "logs", label = "📜 LOGS" },
-	{ id = "settings", label = "⚙ SETTINGS" },
+	{ id = "scan", label = "🔍 SCAN" },
+	{ id = "exec", label = "💥 EXEC" },
+	{ id = "reqs", label = "💡 REQ" },
+	{ id = "logs", label = "📜 LOG" },
+	{ id = "setup", label = "⚙ SET" },
 }
 
 local activeTab = "scan"
@@ -561,18 +552,18 @@ end
 
 for i, def in ipairs(TAB_DEFS) do
 	local btn = create("TextButton", {
-		Size = UDim2.new(0.25, -5, 1, 0),
+		Size = UDim2.new(0.2, -4, 1, 0),
 		BackgroundColor3 = THEME.panel2,
 		Text = def.label,
 		TextColor3 = THEME.text,
-		TextSize = 12,
+		TextSize = 10,
 		Font = Enum.Font.GothamBold,
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
 		LayoutOrder = i,
 		Parent = TabRow,
 	})
-	corner(btn, 8)
+	corner(btn, 7)
 	hoverify(btn, THEME.panel2, THEME.btnHover)
 	tabButtons[def.id] = btn
 	pages[def.id] = create("Frame", {
@@ -586,16 +577,41 @@ for i, def in ipairs(TAB_DEFS) do
 	end)
 end
 
+local Ball = create("TextButton", {
+	Name = "Ball",
+	AutoButtonColor = false,
+	BackgroundColor3 = THEME.bg,
+	BackgroundTransparency = 0.05,
+	Size = UDim2.new(0, 56, 0, 56),
+	Position = UDim2.new(0.88, -28, 0.8, -28),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Text = "⚡",
+	TextColor3 = THEME.accent,
+	TextSize = 24,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	Visible = false,
+	ZIndex = 60,
+	Parent = parentGui,
+})
+corner(Ball, 28)
+local ballStroke = stroke(Ball, THEME.accent, 2.5, 0.1)
+table.insert(accentPaintables, { inst = ballStroke, prop = "Color" })
+table.insert(accentPaintables, { inst = Ball, prop = "TextColor3" })
+
+local setMinimized
+
 local function setStatus(text)
 	UI.StatusLeft.Text = text
 end
 
 local function setStats()
-	UI.StatusRight.Text = ("probed %d | confirmed %d"):format(State.stats.probed, State.stats.confirmed)
+	UI.StatusRight.Text = ("probed %d | hits %d"):format(State.stats.probed, State.stats.confirmed)
 end
 
 local function setProgress(frac, label)
 	UI.ProgressFill.Size = UDim2.new(math.clamp(frac, 0, 1), 0, 1, 0)
+	UI.ProgressPct.Text = tostring(math.floor(math.clamp(frac, 0, 1) * 100)) .. "%"
 	if label then
 		UI.ScanStatus.Text = label
 	end
@@ -627,24 +643,36 @@ local function scoreRemote(remote)
 	return score, table.concat(reasons, " ")
 end
 
-local function copyText(t)
-	local f = setclipboard or toclipboard
-	if f then
-		return pcall(f, t)
+local function harvestRequireIds(obj, found, counters)
+	counters.scanned = counters.scanned + 1
+	local ok, src = pcall(function()
+		return obj.Source
+	end)
+	if ok and type(src) == "string" and #src > 0 then
+		counters.readable = counters.readable + 1
+		for id in src:gmatch("require%s*%(%s*(%d+)%s*%)") do
+			if #id >= 5 then
+				if not found[id] then
+					found[id] = { id = id, count = 0 }
+				end
+				found[id].count = found[id].count + 1
+			end
+		end
 	end
-	return false
 end
 
 local function rebuildTargets()
 	local paths = { "LOCAL" }
 	local refs = { nil }
 	for _, r in ipairs(State.results) do
-		local ok, full = pcall(function()
-			return r.remote:GetFullName()
-		end)
-		if ok and full then
-			table.insert(paths, "game." .. full)
-			table.insert(refs, r.remote)
+		if r.hits > 0 or State.resultFilter == "ALL" then
+			local ok, full = pcall(function()
+				return r.remote:GetFullName()
+			end)
+			if ok and full then
+				table.insert(paths, "game." .. full)
+				table.insert(refs, r.remote)
+			end
 		end
 	end
 	State.targetPaths = paths
@@ -663,110 +691,114 @@ local function renderResults()
 			c:Destroy()
 		end
 	end
+	local shown = 0
 	for i, r in ipairs(State.results) do
-		local row = create("Frame", {
-			Size = UDim2.new(1, -8, 0, 46),
-			BackgroundColor3 = THEME.panel,
-			BackgroundTransparency = 0.1,
-			BorderSizePixel = 0,
-			LayoutOrder = i,
-			Parent = UI.ResultsFrame,
-		})
-		corner(row, 8)
-		local badgeColor = r.confirmed and THEME.good or (r.score >= 3 and THEME.warn or THEME.dim)
-		local badge = create("TextLabel", {
-			Size = UDim2.new(0, 58, 1, -10),
-			Position = UDim2.new(0, 5, 0, 5),
-			BackgroundColor3 = badgeColor,
-			BackgroundTransparency = 0.15,
-			Text = r.confirmed and "HIT!" or (tostring(r.score)),
-			TextColor3 = Color3.fromRGB(10, 10, 14),
-			TextSize = r.confirmed and 14 or 16,
-			Font = Enum.Font.GothamBold,
-			BorderSizePixel = 0,
-			Parent = row,
-		})
-		corner(badge, 6)
-		create("TextLabel", {
-			Size = UDim2.new(1, -210, 0, 20),
-			Position = UDim2.new(0, 70, 0, 4),
-			BackgroundTransparency = 1,
-			Text = r.remote.Name .. "  (" .. r.remote.ClassName .. ")",
-			TextColor3 = THEME.text,
-			TextSize = 13,
-			Font = Enum.Font.GothamBold,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextTruncate = Enum.TextTruncate.AtEnd,
-			Parent = row,
-		})
-		create("TextLabel", {
-			Size = UDim2.new(1, -210, 0, 16),
-			Position = UDim2.new(0, 70, 0, 24),
-			BackgroundTransparency = 1,
-			Text = r.reason ~= "" and r.reason or r.pathShort,
-			TextColor3 = THEME.dim,
-			TextSize = 10,
-			Font = Enum.Font.Code,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextTruncate = Enum.TextTruncate.AtEnd,
-			Parent = row,
-		})
-		local execB = create("TextButton", {
-			Size = UDim2.new(0, 56, 0, 28),
-			Position = UDim2.new(1, -130, 0.5, -14),
-			BackgroundColor3 = THEME.good,
-			Text = "EXEC",
-			TextColor3 = Color3.fromRGB(10, 12, 10),
-			TextSize = 12,
-			Font = Enum.Font.GothamBold,
-			BorderSizePixel = 0,
-			AutoButtonColor = false,
-			Parent = row,
-		})
-		corner(execB, 6)
-		hoverify(execB, THEME.good, Color3.fromRGB(40, 140, 75))
-		local copyB = create("TextButton", {
-			Size = UDim2.new(0, 56, 0, 28),
-			Position = UDim2.new(1, -66, 0.5, -14),
-			BackgroundColor3 = THEME.btn,
-			Text = "PATH",
-			TextColor3 = THEME.text,
-			TextSize = 12,
-			Font = Enum.Font.GothamBold,
-			BorderSizePixel = 0,
-			AutoButtonColor = false,
-			Parent = row,
-		})
-		corner(copyB, 6)
-		hoverify(copyB, THEME.btn, THEME.btnHover)
-		execB.MouseButton1Click:Connect(function()
-			for idx, ref in ipairs(State.targetRefs) do
-				if ref == r.remote then
-					State.targetIndex = idx
-					break
+		if State.resultFilter == "ALL" or r.hits > 0 then
+			shown = shown + 1
+			local row = create("Frame", {
+				Size = UDim2.new(1, -6, 0, 40),
+				BackgroundColor3 = THEME.panel,
+				BackgroundTransparency = 0.1,
+				BorderSizePixel = 0,
+				LayoutOrder = shown,
+				Parent = UI.ResultsFrame,
+			})
+			corner(row, 7)
+			local badgeColor = r.hits > 0 and THEME.good or (r.score >= 3 and THEME.warn or THEME.dim)
+			local badge = create("TextLabel", {
+				Size = UDim2.new(0, 48, 1, -8),
+				Position = UDim2.new(0, 4, 0, 4),
+				BackgroundColor3 = badgeColor,
+				BackgroundTransparency = 0.15,
+				Text = r.hits > 0 and "HIT!" or tostring(r.score),
+				TextColor3 = Color3.fromRGB(10, 10, 14),
+				TextSize = r.hits > 0 and 12 or 14,
+				Font = Enum.Font.GothamBold,
+				BorderSizePixel = 0,
+				Parent = row,
+			})
+			corner(badge, 6)
+			create("TextLabel", {
+				Size = UDim2.new(1, -186, 0, 17),
+				Position = UDim2.new(0, 58, 0, 3),
+				BackgroundTransparency = 1,
+				Text = r.remote.Name .. "  (" .. r.remote.ClassName .. ")",
+				TextColor3 = THEME.text,
+				TextSize = 12,
+				Font = Enum.Font.GothamBold,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Parent = row,
+			})
+			create("TextLabel", {
+				Size = UDim2.new(1, -186, 0, 14),
+				Position = UDim2.new(0, 58, 0, 21),
+				BackgroundTransparency = 1,
+				Text = r.displayReason,
+				TextColor3 = r.hits > 0 and THEME.good or THEME.dim,
+				TextSize = 9,
+				Font = Enum.Font.Code,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Parent = row,
+			})
+			local execB = create("TextButton", {
+				Size = UDim2.new(0, 50, 0, 24),
+				Position = UDim2.new(1, -116, 0.5, -12),
+				BackgroundColor3 = THEME.good,
+				Text = "EXEC",
+				TextColor3 = Color3.fromRGB(10, 12, 10),
+				TextSize = 10,
+				Font = Enum.Font.GothamBold,
+				BorderSizePixel = 0,
+				AutoButtonColor = false,
+				Parent = row,
+			})
+			corner(execB, 6)
+			hoverify(execB, THEME.good, Color3.fromRGB(40, 140, 75))
+			local copyB = create("TextButton", {
+				Size = UDim2.new(0, 50, 0, 24),
+				Position = UDim2.new(1, -58, 0.5, -12),
+				BackgroundColor3 = THEME.btn,
+				Text = "PATH",
+				TextColor3 = THEME.text,
+				TextSize = 10,
+				Font = Enum.Font.GothamBold,
+				BorderSizePixel = 0,
+				AutoButtonColor = false,
+				Parent = row,
+			})
+			corner(copyB, 6)
+			hoverify(copyB, THEME.btn, THEME.btnHover)
+			execB.MouseButton1Click:Connect(function()
+				for idx, ref in ipairs(State.targetRefs) do
+					if ref == r.remote then
+						State.targetIndex = idx
+						break
+					end
 				end
-			end
-			if UI.updateTargetLabel then
-				UI.updateTargetLabel()
-			end
-			switchTab("exec")
-			outputLine("target → " .. r.remote.Name)
-		end)
-		copyB.MouseButton1Click:Connect(function()
-			if copyText("game." .. r.fullPath) then
-				toast("📋 Copied", r.fullPath, THEME.accent)
-			else
-				toast("⚠ Clipboard unavailable", r.fullPath, THEME.warn)
-			end
-		end)
+				if UI.updateTargetLabel then
+					UI.updateTargetLabel()
+				end
+				switchTab("exec")
+				outputLine("target → " .. r.remote.Name)
+			end)
+			copyB.MouseButton1Click:Connect(function()
+				if copyText("game." .. r.fullPath) then
+					toast("📋 Copied", r.fullPath, THEME.accent)
+				else
+					toast("⚠ No clipboard", r.fullPath, THEME.warn)
+				end
+			end)
+		end
 	end
-	if #State.results == 0 then
+	if shown == 0 then
 		create("TextLabel", {
-			Size = UDim2.new(1, -8, 0, 40),
+			Size = UDim2.new(1, -6, 0, 36),
 			BackgroundTransparency = 1,
-			Text = "no results yet — run a scan",
+			Text = State.resultFilter == "HITS" and "No confirmed hits yet" or "No results yet — run a scan",
 			TextColor3 = THEME.dim,
-			TextSize = 13,
+			TextSize = 12,
 			Font = Enum.Font.Gotham,
 			LayoutOrder = 1,
 			Parent = UI.ResultsFrame,
@@ -782,15 +814,15 @@ local function renderLogs()
 		end
 	end
 	local n = #State.logs
-	local from = math.max(1, n - 149)
+	local from = math.max(1, n - 119)
 	for i = from, n do
 		local e = State.logs[i]
 		create("TextLabel", {
-			Size = UDim2.new(1, -8, 0, 20),
+			Size = UDim2.new(1, -6, 0, 18),
 			BackgroundTransparency = 1,
 			Text = ("[%s] %s %s"):format(e.stamp, LOG_ICONS[e.level], e.msg),
 			TextColor3 = LOG_COLORS[e.level],
-			TextSize = 11,
+			TextSize = 10,
 			Font = Enum.Font.Code,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
@@ -801,45 +833,215 @@ local function renderLogs()
 end
 UI.renderLogs = renderLogs
 
+local function renderRequires()
+	for _, c in ipairs(UI.ReqsFrame:GetChildren()) do
+		if c:IsA("Frame") then
+			c:Destroy()
+		end
+	end
+	for i, rq in ipairs(State.requires) do
+		local row = create("Frame", {
+			Size = UDim2.new(1, -6, 0, 38),
+			BackgroundColor3 = THEME.panel,
+			BackgroundTransparency = 0.1,
+			BorderSizePixel = 0,
+			LayoutOrder = i,
+			Parent = UI.ReqsFrame,
+		})
+		corner(row, 7)
+		create("TextLabel", {
+			Size = UDim2.new(1, -196, 0, 17),
+			Position = UDim2.new(0, 8, 0, 2),
+			BackgroundTransparency = 1,
+			Text = "require(" .. rq.id .. ")",
+			TextColor3 = THEME.accent2,
+			TextSize = 12,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Parent = row,
+		})
+		create("TextLabel", {
+			Size = UDim2.new(1, -196, 0, 13),
+			Position = UDim2.new(0, 8, 0, 20),
+			BackgroundTransparency = 1,
+			Text = "used " .. rq.count .. "x in game scripts · runs client-side or via remote",
+			TextColor3 = THEME.dim,
+			TextSize = 9,
+			Font = Enum.Font.Code,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = row,
+		})
+		local useB = create("TextButton", {
+			Size = UDim2.new(0, 54, 0, 24),
+			Position = UDim2.new(1, -182, 0.5, -12),
+			BackgroundColor3 = THEME.accent2,
+			Text = "FILL",
+			TextColor3 = Color3.fromRGB(14, 8, 20),
+			TextSize = 9,
+			Font = Enum.Font.GothamBold,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Parent = row,
+		})
+		corner(useB, 6)
+		hoverify(useB, THEME.accent2, Color3.fromRGB(130, 60, 205))
+		local locB = create("TextButton", {
+			Size = UDim2.new(0, 54, 0, 24),
+			Position = UDim2.new(1, -122, 0.5, -12),
+			BackgroundColor3 = THEME.good,
+			Text = "LOCAL",
+			TextColor3 = Color3.fromRGB(8, 14, 10),
+			TextSize = 9,
+			Font = Enum.Font.GothamBold,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Parent = row,
+		})
+		corner(locB, 6)
+		hoverify(locB, THEME.good, Color3.fromRGB(45, 165, 90))
+		local remB = create("TextButton", {
+			Size = UDim2.new(0, 54, 0, 24),
+			Position = UDim2.new(1, -62, 0.5, -12),
+			BackgroundColor3 = THEME.accent,
+			Text = "REMOTE",
+			TextColor3 = Color3.fromRGB(8, 10, 12),
+			TextSize = 9,
+			Font = Enum.Font.GothamBold,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Parent = row,
+		})
+		corner(remB, 6)
+		hoverify(remB, THEME.accent, Color3.fromRGB(0, 190, 172))
+
+		useB.MouseButton1Click:Connect(function()
+			UI.RequireIdBox.Text = rq.id
+			switchTab("exec")
+			outputLine("filled require(" .. rq.id .. ") — pick target and press EXECUTE")
+		end)
+		locB.MouseButton1Click:Connect(function()
+			task.spawn(function()
+				outputLine("▶ running require(" .. rq.id .. ") locally...")
+				local f = loadstring or load
+				if not f then
+					outputLine("❌ no loadstring in this executor")
+					return
+				end
+				local fn, err = f(('require(%s)("%s")'):format(rq.id, PlayerName))
+				if not fn then
+					outputLine("❌ compile: " .. tostring(err))
+					return
+				end
+				local ok, res = pcall(fn)
+				if ok then
+					outputLine("✅ local ok: " .. tostring(res))
+					log("GOOD", "require(" .. rq.id .. ") ran on client")
+				else
+					outputLine("❌ " .. tostring(res))
+					log("BAD", "require(" .. rq.id .. ") failed: " .. tostring(res))
+				end
+			end)
+		end)
+		remB.MouseButton1Click:Connect(function()
+			local ref = State.targetRefs[State.targetIndex]
+			local code = ('require(%s)("%s")'):format(rq.id, PlayerName)
+			local confirmGuid
+			if State.settings.confirmExec then
+				confirmGuid = newGuid()
+				code = code .. '\nworkspace:SetAttribute("JZXE_' .. confirmGuid .. '",true)'
+			end
+			task.spawn(function()
+				if ref == nil then
+					local f = loadstring or load
+					if f then
+						local fn = f(code)
+						if fn then
+							pcall(fn)
+						end
+					end
+					outputLine("ℹ target was LOCAL — ran locally instead")
+					return
+				end
+				if ref:IsA("RemoteEvent") then
+					local ok = pcall(ref.FireServer, ref, code)
+					outputLine(ok and ("📨 require(" .. rq.id .. ") → " .. ref.Name) or "❌ FireServer failed")
+				else
+					local ok, res = pcall(ref.InvokeServer, ref, code)
+					outputLine(ok and ("📨 → " .. ref.Name .. ": " .. tostring(res)) or "❌ InvokeServer failed")
+				end
+				log("INFO", "sent require(" .. rq.id .. ") to " .. ref.Name)
+			end)
+		end)
+	end
+	if #State.requires == 0 then
+		create("TextLabel", {
+			Size = UDim2.new(1, -6, 0, 60),
+			BackgroundTransparency = 1,
+			Text = "Nothing collected yet.\nPress FETCH — the scanner reads the game's\nscripts and lists every require(ID) used in them.",
+			TextColor3 = THEME.dim,
+			TextSize = 11,
+			Font = Enum.Font.Gotham,
+			TextWrapped = true,
+			LayoutOrder = 1,
+			Parent = UI.ReqsFrame,
+		})
+	end
+end
+UI.renderRequires = renderRequires
+
 local ScanPage = pages.scan
 
+create("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 12),
+	BackgroundTransparency = 1,
+	Text = "Finds the game's remotes and tests each one: does it execute code server-side?",
+	TextColor3 = THEME.dim,
+	TextSize = 9,
+	Font = Enum.Font.Gotham,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = ScanPage,
+})
+
 UI.ScanBtn = create("TextButton", {
-	Size = UDim2.new(0, 250, 0, 52),
-	Position = UDim2.new(0, 0, 0, 0),
+	Size = UDim2.new(0, 218, 0, 44),
+	Position = UDim2.new(0, 0, 0, 16),
 	BackgroundColor3 = THEME.accent,
 	Text = "🔍 START SCAN",
 	TextColor3 = Color3.fromRGB(8, 10, 12),
-	TextSize = 17,
+	TextSize = 15,
 	Font = Enum.Font.GothamBold,
 	BorderSizePixel = 0,
 	AutoButtonColor = false,
 	Parent = ScanPage,
 })
-corner(UI.ScanBtn, 10)
+corner(UI.ScanBtn, 9)
 hoverify(UI.ScanBtn, THEME.accent, Color3.fromRGB(0, 190, 172))
+table.insert(accentPaintables, { inst = UI.ScanBtn, prop = "BackgroundColor3" })
 
 UI.SensBtn = create("TextButton", {
-	Size = UDim2.new(0, 266, 0, 52),
-	Position = UDim2.new(0, 262, 0, 0),
+	Size = UDim2.new(0, 216, 0, 44),
+	Position = UDim2.new(0, 230, 0, 16),
 	BackgroundColor3 = THEME.panel2,
 	Text = "SENSITIVITY: MEDIUM",
 	TextColor3 = THEME.text,
-	TextSize = 13,
+	TextSize = 12,
 	Font = Enum.Font.GothamBold,
 	BorderSizePixel = 0,
 	AutoButtonColor = false,
 	Parent = ScanPage,
 })
-corner(UI.SensBtn, 10)
+corner(UI.SensBtn, 9)
 hoverify(UI.SensBtn, THEME.panel2, THEME.btnHover)
 
 create("Frame", {
-	Size = UDim2.new(1, 0, 0, 10),
+	Name = "ProgressBG",
+	Size = UDim2.new(1, 0, 0, 8),
 	Position = UDim2.new(0, 0, 0, 66),
 	BackgroundColor3 = THEME.panel2,
 	BorderSizePixel = 0,
 	Parent = ScanPage,
-}).Name = "ProgressBG"
+})
 
 UI.ProgressFill = create("Frame", {
 	Size = UDim2.new(0, 0, 1, 0),
@@ -847,105 +1049,173 @@ UI.ProgressFill = create("Frame", {
 	BorderSizePixel = 0,
 	Parent = ScanPage:FindFirstChild("ProgressBG"),
 })
-corner(ScanPage:FindFirstChild("ProgressBG"), 5)
-corner(UI.ProgressFill, 5)
+corner(ScanPage:FindFirstChild("ProgressBG"), 4)
+corner(UI.ProgressFill, 4)
+table.insert(accentPaintables, { inst = UI.ProgressFill, prop = "BackgroundColor3" })
+
+UI.ProgressPct = create("TextLabel", {
+	Size = UDim2.new(0, 34, 0, 8),
+	Position = UDim2.new(1, -38, 0, 66),
+	BackgroundTransparency = 1,
+	Text = "0%",
+	TextColor3 = THEME.dim,
+	TextSize = 9,
+	Font = Enum.Font.Code,
+	TextXAlignment = Enum.TextXAlignment.Right,
+	Parent = ScanPage,
+})
 
 UI.ScanStatus = create("TextLabel", {
-	Size = UDim2.new(1, 0, 0, 18),
-	Position = UDim2.new(0, 0, 0, 82),
+	Size = UDim2.new(1, -40, 0, 13),
+	Position = UDim2.new(0, 0, 0, 77),
 	BackgroundTransparency = 1,
-	Text = "idle",
+	Text = "Ready.",
 	TextColor3 = THEME.dim,
-	TextSize = 12,
+	TextSize = 10,
 	Font = Enum.Font.Gotham,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	Parent = ScanPage,
 })
 
 UI.StatsLbl = create("TextLabel", {
-	Size = UDim2.new(1, 0, 0, 18),
-	Position = UDim2.new(0, 0, 0, 102),
+	Size = UDim2.new(1, 0, 0, 12),
+	Position = UDim2.new(0, 0, 0, 91),
 	BackgroundTransparency = 1,
 	Text = "",
 	TextColor3 = THEME.accent2,
-	TextSize = 11,
+	TextSize = 10,
 	Font = Enum.Font.Code,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	Parent = ScanPage,
 })
 
+create("TextLabel", {
+	Size = UDim2.new(0, 276, 0, 11),
+	Position = UDim2.new(0, 0, 0, 104),
+	BackgroundTransparency = 1,
+	Text = 'Green "HIT!" = confirmed backdoor',
+	TextColor3 = THEME.dim,
+	TextSize = 9,
+	Font = Enum.Font.Gotham,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = ScanPage,
+})
+
+UI.FilterBtn = create("TextButton", {
+	Size = UDim2.new(0, 82, 0, 13),
+	Position = UDim2.new(0, 282, 0, 103),
+	BackgroundColor3 = THEME.panel2,
+	Text = "FILTER: ALL",
+	TextColor3 = THEME.text,
+	TextSize = 8,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	TextScaled = false,
+	Parent = ScanPage,
+})
+corner(UI.FilterBtn, 4)
+hoverify(UI.FilterBtn, THEME.panel2, THEME.btnHover)
+
+UI.CopyAllBtn = create("TextButton", {
+	Size = UDim2.new(0, 82, 0, 13),
+	Position = UDim2.new(0, 368, 0, 103),
+	BackgroundColor3 = THEME.panel2,
+	Text = "📋 COPY ALL",
+	TextColor3 = THEME.text,
+	TextSize = 8,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Parent = ScanPage,
+})
+corner(UI.CopyAllBtn, 4)
+hoverify(UI.CopyAllBtn, THEME.panel2, THEME.btnHover)
+
 UI.ResultsFrame = create("ScrollingFrame", {
-	Size = UDim2.new(1, 0, 1, -128),
-	Position = UDim2.new(0, 0, 0, 128),
+	Size = UDim2.new(1, 0, 1, -118),
+	Position = UDim2.new(0, 0, 0, 118),
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
-	ScrollBarThickness = 6,
+	ScrollBarThickness = 5,
 	CanvasSize = UDim2.new(0, 0, 0, 0),
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	Parent = ScanPage,
 })
 create("UIListLayout", {
-	Padding = UDim.new(0, 6),
+	Padding = UDim.new(0, 5),
 	SortOrder = Enum.SortOrder.LayoutOrder,
 	Parent = UI.ResultsFrame,
 })
 
 local ExecPage = pages.exec
 
+create("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 12),
+	BackgroundTransparency = 1,
+	Text = "Pick a target (LOCAL = your own client), paste lua or a require-ID, then run.",
+	TextColor3 = THEME.dim,
+	TextSize = 9,
+	Font = Enum.Font.Gotham,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = ExecPage,
+})
+
 UI.TargetBtn = create("TextButton", {
-	Size = UDim2.new(1, 0, 0, 34),
-	Position = UDim2.new(0, 0, 0, 0),
+	Size = UDim2.new(1, 0, 0, 28),
+	Position = UDim2.new(0, 0, 0, 14),
 	BackgroundColor3 = THEME.panel2,
 	Text = "🎯 TARGET: LOCAL",
 	TextColor3 = THEME.text,
-	TextSize = 13,
+	TextSize = 12,
 	Font = Enum.Font.GothamBold,
 	BorderSizePixel = 0,
 	AutoButtonColor = false,
 	TextTruncate = Enum.TextTruncate.AtEnd,
 	Parent = ExecPage,
 })
-corner(UI.TargetBtn, 8)
+corner(UI.TargetBtn, 7)
 hoverify(UI.TargetBtn, THEME.panel2, THEME.btnHover)
 
 UI.ModeBtn = create("TextButton", {
-	Size = UDim2.new(0, 180, 0, 30),
-	Position = UDim2.new(0, 0, 0, 42),
+	Size = UDim2.new(0, 148, 0, 26),
+	Position = UDim2.new(0, 0, 0, 46),
 	BackgroundColor3 = THEME.accent2,
 	Text = "MODE: LUA",
 	TextColor3 = Color3.fromRGB(14, 8, 20),
-	TextSize = 13,
+	TextSize = 12,
 	Font = Enum.Font.GothamBold,
 	BorderSizePixel = 0,
 	AutoButtonColor = false,
 	Parent = ExecPage,
 })
-corner(UI.ModeBtn, 8)
+corner(UI.ModeBtn, 7)
 hoverify(UI.ModeBtn, THEME.accent2, Color3.fromRGB(130, 60, 205))
 
-UI.ModeHint = create("TextLabel", {
-	Size = UDim2.new(1, -190, 0, 30),
-	Position = UDim2.new(0, 190, 0, 42),
+create("TextLabel", {
+	Size = UDim2.new(1, -156, 0, 26),
+	Position = UDim2.new(0, 156, 0, 46),
 	BackgroundTransparency = 1,
-	Text = "LUA = raw server-side lua | REQUIRE = require(asset)(args)",
+	Text = "LUA = raw lua code · REQUIRE = require(ID)(args)",
 	TextColor3 = THEME.dim,
-	TextSize = 11,
+	TextSize = 9,
 	Font = Enum.Font.Gotham,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextWrapped = true,
+	VerticalCenter = true,
 	Parent = ExecPage,
 })
 
 UI.CodeBox = create("TextBox", {
-	Size = UDim2.new(1, 0, 0, 112),
-	Position = UDim2.new(0, 0, 0, 80),
+	Size = UDim2.new(1, 0, 0, 84),
+	Position = UDim2.new(0, 0, 0, 78),
 	BackgroundColor3 = Color3.fromRGB(8, 8, 12),
 	BackgroundTransparency = 0.1,
 	Text = 'print("hello from jzscanner")',
 	PlaceholderText = "-- paste raw lua here...",
 	PlaceholderColor3 = THEME.dim,
 	TextColor3 = THEME.text,
-	TextSize = 13,
+	TextSize = 12,
 	Font = Enum.Font.Code,
 	MultiLine = true,
 	TextXAlignment = Enum.TextXAlignment.Left,
@@ -954,84 +1224,83 @@ UI.CodeBox = create("TextBox", {
 	BorderSizePixel = 0,
 	Parent = ExecPage,
 })
-corner(UI.CodeBox, 8)
+corner(UI.CodeBox, 7)
 stroke(UI.CodeBox, THEME.stroke, 1, 0.4)
 
 UI.RequireGroup = create("Frame", {
-	Size = UDim2.new(1, 0, 0, 112),
-	Position = UDim2.new(0, 0, 0, 80),
+	Size = UDim2.new(1, 0, 0, 84),
+	Position = UDim2.new(0, 0, 0, 78),
 	BackgroundTransparency = 1,
 	Visible = false,
 	Parent = ExecPage,
 })
 
 create("TextLabel", {
-	Size = UDim2.new(0.5, -6, 0, 16),
-	Position = UDim2.new(0, 0, 0, 0),
+	Size = UDim2.new(0.5, -5, 0, 11),
 	BackgroundTransparency = 1,
 	Text = "ASSET ID:",
 	TextColor3 = THEME.dim,
-	TextSize = 11,
+	TextSize = 9,
 	Font = Enum.Font.GothamBold,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	Parent = UI.RequireGroup,
 })
 
 UI.RequireIdBox = create("TextBox", {
-	Size = UDim2.new(0.5, -6, 0, 34),
-	Position = UDim2.new(0, 0, 0, 18),
+	Size = UDim2.new(0.5, -5, 0, 26),
+	Position = UDim2.new(0, 0, 0, 13),
 	BackgroundColor3 = Color3.fromRGB(8, 8, 12),
 	BackgroundTransparency = 0.1,
 	Text = "",
 	PlaceholderText = "6338277134",
 	PlaceholderColor3 = THEME.dim,
 	TextColor3 = THEME.text,
-	TextSize = 13,
+	TextSize = 12,
 	Font = Enum.Font.Code,
 	ClearTextOnFocus = false,
 	BorderSizePixel = 0,
 	Parent = UI.RequireGroup,
 })
-corner(UI.RequireIdBox, 8)
+corner(UI.RequireIdBox, 7)
 stroke(UI.RequireIdBox, THEME.stroke, 1, 0.4)
 
 create("TextLabel", {
-	Size = UDim2.new(0.5, 0, 0, 16),
-	Position = UDim2.new(0.5, 6, 0, 0),
+	Size = UDim2.new(0.5, 0, 0, 11),
+	Position = UDim2.new(0.5, 5, 0, 0),
 	BackgroundTransparency = 1,
-	Text = 'ARGS (default: your name):',
+	Text = "ARGS (empty = your name):",
 	TextColor3 = THEME.dim,
-	TextSize = 11,
+	TextSize = 9,
 	Font = Enum.Font.GothamBold,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	Parent = UI.RequireGroup,
 })
 
 UI.RequireArgsBox = create("TextBox", {
-	Size = UDim2.new(0.5, -6, 0, 34),
-	Position = UDim2.new(0.5, 6, 0, 18),
+	Size = UDim2.new(0.5, -5, 0, 26),
+	Position = UDim2.new(0.5, 5, 0, 13),
 	BackgroundColor3 = Color3.fromRGB(8, 8, 12),
 	BackgroundTransparency = 0.1,
 	Text = "",
 	PlaceholderText = '"' .. PlayerName .. '"',
 	PlaceholderColor3 = THEME.dim,
 	TextColor3 = THEME.text,
-	TextSize = 13,
+	TextSize = 12,
 	Font = Enum.Font.Code,
 	ClearTextOnFocus = false,
 	BorderSizePixel = 0,
 	Parent = UI.RequireGroup,
 })
-corner(UI.RequireArgsBox, 8)
+corner(UI.RequireArgsBox, 7)
 stroke(UI.RequireArgsBox, THEME.stroke, 1, 0.4)
 
 UI.RequirePreview = create("TextLabel", {
-	Size = UDim2.new(1, 0, 0, 50),
-	Position = UDim2.new(0, 0, 0, 60),
+	Size = UDim2.new(1, 0, 0, 40),
+	Position = UDim2.new(0, 0, 0, 43),
 	BackgroundTransparency = 1,
 	Text = 'preview: require(ID)("NAME")',
 	TextColor3 = THEME.accent,
-	TextSize = 12,
+	TextSize = 10,
 	Font = Enum.Font.Code,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextWrapped = true,
@@ -1039,28 +1308,28 @@ UI.RequirePreview = create("TextLabel", {
 })
 
 UI.ExecBtn = create("TextButton", {
-	Size = UDim2.new(1, 0, 0, 42),
-	Position = UDim2.new(0, 0, 0, 200),
+	Size = UDim2.new(1, 0, 0, 34),
+	Position = UDim2.new(0, 0, 0, 168),
 	BackgroundColor3 = THEME.good,
 	Text = "💥 EXECUTE",
 	TextColor3 = Color3.fromRGB(8, 14, 10),
-	TextSize = 16,
+	TextSize = 14,
 	Font = Enum.Font.GothamBold,
 	BorderSizePixel = 0,
 	AutoButtonColor = false,
 	Parent = ExecPage,
 })
-corner(UI.ExecBtn, 10)
+corner(UI.ExecBtn, 8)
 hoverify(UI.ExecBtn, THEME.good, Color3.fromRGB(45, 165, 90))
 
 UI.OutLabel = create("TextLabel", {
-	Size = UDim2.new(1, 0, 1, -250),
-	Position = UDim2.new(0, 0, 0, 250),
+	Size = UDim2.new(1, 0, 1, -208),
+	Position = UDim2.new(0, 0, 0, 208),
 	BackgroundColor3 = Color3.fromRGB(8, 8, 12),
 	BackgroundTransparency = 0.2,
 	Text = "> ready",
 	TextColor3 = THEME.good,
-	TextSize = 11,
+	TextSize = 10,
 	Font = Enum.Font.Code,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextYAlignment = Enum.TextYAlignment.Top,
@@ -1068,32 +1337,101 @@ UI.OutLabel = create("TextLabel", {
 	BorderSizePixel = 0,
 	Parent = ExecPage,
 })
-corner(UI.OutLabel, 8)
+corner(UI.OutLabel, 7)
 UI.outLabel = UI.OutLabel
+
+local ReqsPage = pages.reqs
+
+create("TextLabel", {
+	Size = UDim2.new(1, -120, 0, 12),
+	BackgroundTransparency = 1,
+	Text = "require(ID)s used by this game — run locally on client or through a remote.",
+	TextColor3 = THEME.dim,
+	TextSize = 9,
+	Font = Enum.Font.Gotham,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = ReqsPage,
+})
+
+UI.CollectBtn = create("TextButton", {
+	Size = UDim2.new(0, 110, 0, 26),
+	Position = UDim2.new(0, 0, 0, 14),
+	BackgroundColor3 = THEME.accent2,
+	Text = "🔄 FETCH",
+	TextColor3 = Color3.fromRGB(14, 8, 20),
+	TextSize = 12,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Parent = ReqsPage,
+})
+corner(UI.CollectBtn, 7)
+hoverify(UI.CollectBtn, THEME.accent2, Color3.fromRGB(130, 60, 205))
+
+UI.ReqCountLbl = create("TextLabel", {
+	Size = UDim2.new(1, -122, 0, 26),
+	Position = UDim2.new(0, 122, 0, 14),
+	BackgroundTransparency = 1,
+	Text = "",
+	TextColor3 = THEME.dim,
+	TextSize = 10,
+	Font = Enum.Font.Code,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	VerticalCenter = true,
+	Parent = ReqsPage,
+})
+
+UI.ReqsFrame = create("ScrollingFrame", {
+	Size = UDim2.new(1, 0, 1, -48),
+	Position = UDim2.new(0, 0, 0, 48),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 5,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	Parent = ReqsPage,
+})
+create("UIListLayout", {
+	Padding = UDim.new(0, 5),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Parent = UI.ReqsFrame,
+})
 
 local LogsPage = pages.logs
 
+create("TextLabel", {
+	Size = UDim2.new(1, -114, 0, 12),
+	BackgroundTransparency = 1,
+	Text = "Everything that happened, newest at bottom.",
+	TextColor3 = THEME.dim,
+	TextSize = 9,
+	Font = Enum.Font.Gotham,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = LogsPage,
+})
+
 UI.ClearLogsBtn = create("TextButton", {
-	Size = UDim2.new(0, 130, 0, 30),
-	Position = UDim2.new(1, -130, 0, 0),
+	Size = UDim2.new(0, 104, 0, 24),
+	Position = UDim2.new(1, -104, 0, 0),
 	BackgroundColor3 = THEME.btn,
 	Text = "🗑 CLEAR",
 	TextColor3 = THEME.text,
-	TextSize = 12,
+	TextSize = 10,
 	Font = Enum.Font.GothamBold,
 	BorderSizePixel = 0,
 	AutoButtonColor = false,
 	Parent = LogsPage,
 })
-corner(UI.ClearLogsBtn, 8)
+corner(UI.ClearLogsBtn, 6)
 hoverify(UI.ClearLogsBtn, THEME.btn, THEME.btnHover)
 
 UI.LogsFrame = create("ScrollingFrame", {
-	Size = UDim2.new(1, 0, 1, -40),
-	Position = UDim2.new(0, 0, 0, 40),
+	Size = UDim2.new(1, 0, 1, -30),
+	Position = UDim2.new(0, 0, 0, 30),
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
-	ScrollBarThickness = 6,
+	ScrollBarThickness = 5,
 	CanvasSize = UDim2.new(0, 0, 0, 0),
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	Parent = LogsPage,
@@ -1104,33 +1442,55 @@ create("UIListLayout", {
 	Parent = UI.LogsFrame,
 })
 
-local SettingsPage = pages.settings
+local SetupPage = pages.setup
 
-local function makeSettingRow(y, labelText, key)
+local function applyTheme()
+	THEME.accent = THEMES_LIST[State.themeIndex].c
+	for _, entry in ipairs(accentPaintables) do
+		pcall(function()
+			entry.inst[entry.prop] = THEME.accent
+		end)
+	end
+	switchTab(activeTab)
+end
+
+create("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 12),
+	BackgroundTransparency = 1,
+	Text = "Settings — toggled features apply instantly.",
+	TextColor3 = THEME.dim,
+	TextSize = 9,
+	Font = Enum.Font.Gotham,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = SetupPage,
+})
+
+local function makeSettingToggle(y, labelText, key)
 	create("TextLabel", {
-		Size = UDim2.new(1, -150, 0, 34),
+		Size = UDim2.new(1, -108, 0, 28),
 		Position = UDim2.new(0, 0, 0, y),
 		BackgroundTransparency = 1,
 		Text = labelText,
 		TextColor3 = THEME.text,
-		TextSize = 13,
+		TextSize = 11,
 		Font = Enum.Font.Gotham,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = SettingsPage,
+		TextWrapped = true,
+		Parent = SetupPage,
 	})
 	local btn = create("TextButton", {
-		Size = UDim2.new(0, 110, 0, 34),
-		Position = UDim2.new(1, -110, 0, y),
+		Size = UDim2.new(0, 96, 0, 28),
+		Position = UDim2.new(1, -96, 0, y),
 		BackgroundColor3 = THEME.good,
 		Text = "ON",
 		TextColor3 = Color3.fromRGB(8, 14, 10),
-		TextSize = 13,
+		TextSize = 12,
 		Font = Enum.Font.GothamBold,
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
-		Parent = SettingsPage,
+		Parent = SetupPage,
 	})
-	corner(btn, 8)
+	corner(btn, 7)
 	hoverify(btn, THEME.good, Color3.fromRGB(45, 165, 90))
 	btn.MouseButton1Click:Connect(function()
 		State.settings[key] = not State.settings[key]
@@ -1145,36 +1505,71 @@ local function makeSettingRow(y, labelText, key)
 		end
 		log("INFO", "setting " .. key .. " = " .. tostring(State.settings[key]))
 	end)
-	return btn
 end
 
-makeSettingRow(0, "📢 AUTO HINT — announce to everyone when backdoor is confirmed", "autoHint")
-makeSettingRow(46, "✔ EXEC CONFIRM — verify server actually ran your code", "confirmExec")
-makeSettingRow(92, "🔊 SOUND FX — alert sounds on detection", "sound")
-makeSettingRow(138, "🚀 AUTO SCAN — scan automatically when loaded", "autoScan")
+makeSettingToggle(16, "📢 AUTO HINT — announce to everyone when a backdoor confirms", "autoHint")
+makeSettingToggle(52, "✔ EXEC CONFIRM — verify the server actually ran your code", "confirmExec")
+makeSettingToggle(88, "🔊 SOUND FX — alert sound on detection", "sound")
+makeSettingToggle(124, "🚀 AUTO SCAN — scan right after load", "autoScan")
 
 create("TextLabel", {
-	Size = UDim2.new(1, 0, 0, 90),
-	Position = UDim2.new(0, 0, 1, -96),
+	Size = UDim2.new(1, -108, 0, 28),
+	Position = UDim2.new(0, 0, 0, 160),
+	BackgroundTransparency = 1,
+	Text = "🎨 ACCENT — recolor the whole UI",
+	TextColor3 = THEME.text,
+	TextSize = 11,
+	Font = Enum.Font.Gotham,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = SetupPage,
+})
+
+UI.ThemeBtn = create("TextButton", {
+	Size = UDim2.new(0, 96, 0, 28),
+	Position = UDim2.new(1, -96, 0, 160),
+	BackgroundColor3 = THEME.accent,
+	Text = "CYAN",
+	TextColor3 = Color3.fromRGB(8, 10, 12),
+	TextSize = 12,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Parent = SetupPage,
+})
+corner(UI.ThemeBtn, 7)
+
+UI.ThemeBtn.MouseButton1Click:Connect(function()
+	State.themeIndex = State.themeIndex % #THEMES_LIST + 1
+	local t = THEMES_LIST[State.themeIndex]
+	UI.ThemeBtn.Text = t.name
+	UI.ThemeBtn.BackgroundColor3 = t.c
+	applyTheme()
+	log("INFO", "theme = " .. t.name)
+end)
+hoverify(UI.ThemeBtn, THEMES_LIST[State.themeIndex].c, Color3.fromRGB(0, 190, 172))
+
+create("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 104),
+	Position = UDim2.new(0, 0, 1, -108),
 	BackgroundTransparency = 1,
 	Text = "JzScanner "
 		.. VERSION
-		.. "\nprobe engine v2 — guid-traced payload injection\nmulti-signal heuristics · attribute + instance dual-marker\ntextchat + legacy chat broadcast fallback",
+		.. "\nengine: guid-traced payloads + attribute/instance dual-marker confirmation\nsignals: 39 weighted keywords · random-name detection · invoke responses\ntips: HIGH tests even plain-named remotes · REQ tab harvests game require()s",
 	TextColor3 = THEME.dim,
-	TextSize = 11,
+	TextSize = 10,
 	Font = Enum.Font.Code,
 	TextXAlignment = Enum.TextXAlignment.Left,
-	TextYAlignment = Enum.TextYAlignment.Bottom,
+	TextYAlignment = Enum.TextYAlignment.Top,
 	TextWrapped = true,
-	Parent = SettingsPage,
+	Parent = SetupPage,
 })
 
 switchTab("scan")
 
 local function updateTargetLabel()
 	local p = State.targetPaths[State.targetIndex]
-	if #p > 52 then
-		p = "…" .. p:sub(-51)
+	if #p > 42 then
+		p = "…" .. p:sub(-41)
 	end
 	UI.TargetBtn.Text = "🎯 TARGET: " .. p
 end
@@ -1207,6 +1602,29 @@ UI.ClearLogsBtn.MouseButton1Click:Connect(function()
 	log("INFO", "logs cleared")
 end)
 
+UI.FilterBtn.MouseButton1Click:Connect(function()
+	State.resultFilter = (State.resultFilter == "ALL") and "HITS" or "ALL"
+	UI.FilterBtn.Text = "FILTER: " .. State.resultFilter
+	renderResults()
+end)
+
+UI.CopyAllBtn.MouseButton1Click:Connect(function()
+	local lines = {}
+	for _, r in ipairs(State.results) do
+		local tag = r.hits > 0 and "HIT" or tostring(r.score)
+		table.insert(lines, ("[%s] game.%s (%s)"):format(tag, r.fullPath, r.remote.ClassName))
+	end
+	if #lines == 0 then
+		toast("⚠ Nothing to copy", "Run a scan first.", THEME.warn)
+		return
+	end
+	if copyText(table.concat(lines, "\n")) then
+		toast("📋 Copied " .. #lines .. " results", "Full paths + scores on clipboard.", THEME.accent)
+	else
+		toast("⚠ No clipboard API", "This executor lacks setclipboard.", THEME.warn)
+	end
+end)
+
 UI.RequireIdBox:GetPropertyChangedSignal("Text"):Connect(function()
 	local id = UI.RequireIdBox.Text:match("%d+") or "ID"
 	local args = UI.RequireArgsBox.Text
@@ -1214,6 +1632,87 @@ UI.RequireIdBox:GetPropertyChangedSignal("Text"):Connect(function()
 		args = '"' .. PlayerName .. '"'
 	end
 	UI.RequirePreview.Text = ("preview: require(%s)(%s)"):format(id, args)
+end)
+
+local ballDown = false
+local ballDragStart, ballStartPos, ballMoved
+
+Ball.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		ballDown = true
+		ballMoved = false
+		ballDragStart = input.Position
+		ballStartPos = Ball.Position
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if ballDown and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local delta = input.Position - ballDragStart
+		if math.abs(delta.X) + math.abs(delta.Y) > 5 then
+			ballMoved = true
+		end
+		if ballMoved then
+			Ball.Position = UDim2.new(
+				ballStartPos.X.Scale,
+				ballStartPos.X.Offset + delta.X,
+				ballStartPos.Y.Scale,
+				ballStartPos.Y.Offset + delta.Y
+			)
+		end
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if ballDown and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+		ballDown = false
+		if not ballMoved then
+			setMinimized(false)
+		end
+	end
+end)
+
+setMinimized = function(v)
+	State.minimized = v
+	if v then
+		local tw = TweenService:Create(Root, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+			Size = UDim2.new(0, 0, 0, 0),
+		})
+		tw:Play()
+		tw.Completed:Wait()
+		Root.Visible = false
+		Ball.Visible = true
+		Ball.Size = UDim2.new(0, 0, 0, 0)
+		TweenService:Create(Ball, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			Size = UDim2.new(0, 56, 0, 56),
+		}):Play()
+	else
+		Ball.Visible = false
+		Root.Visible = true
+		Root.Size = UDim2.new(0, 0, 0, 0)
+		TweenService:Create(Root, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+			Size = UDim2.new(0, ROOT_W, 0, ROOT_H),
+		}):Play()
+	end
+end
+
+MinBtn.MouseButton1Click:Connect(function()
+	setMinimized(true)
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+	State.destroyed = true
+	parentGui:Destroy()
+	log("INFO", "JzScanner closed")
+end)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.Insert then
+		parentGui.Enabled = not parentGui.Enabled
+	end
 end)
 
 local function runLocal(code)
@@ -1243,7 +1742,7 @@ local function watchExecMarker(g)
 	conn = workspace.AttributeChanged:Connect(function(attr)
 		if attr == "JZXE_" .. g then
 			conn:Disconnect()
-			outputLine("✅ SERVER EXECUTION CONFIRMED")
+			outputLine("✅ SERVER CONFIRMED EXECUTION")
 			log("GOOD", "execution confirmed via attribute marker")
 			playSound()
 		end
@@ -1251,7 +1750,7 @@ local function watchExecMarker(g)
 	task.delay(CONFIG.ExecConfirmWindow, function()
 		if conn.Connected then
 			conn:Disconnect()
-			outputLine("⚠ no confirm in " .. CONFIG.ExecConfirmWindow .. "s (code may still have run)")
+			outputLine("⚠ no confirmation in " .. CONFIG.ExecConfirmWindow .. "s (code may still have run)")
 			log("WARN", "execution unconfirmed")
 		end
 	end)
@@ -1302,12 +1801,12 @@ local function executeCurrent()
 			end
 			if ref:IsA("RemoteEvent") then
 				local ok = pcall(ref.FireServer, ref, code)
-				outputLine(ok and "📨 fired RemoteEvent" or "❌ FireServer failed")
+				outputLine(ok and "📨 RemoteEvent fired" or "❌ FireServer failed")
 			else
 				local ok, res = pcall(ref.InvokeServer, ref, code)
 				outputLine(ok and ("📨 invoked, returned: " .. tostring(res)) or ("❌ InvokeServer failed: " .. tostring(res)))
 			end
-			log("INFO", "sent payload to " .. ref.Name .. " (" .. mode .. ")")
+			log("INFO", "payload sent to " .. ref.Name .. " (" .. mode .. ")")
 		end)
 	end
 end
@@ -1341,7 +1840,7 @@ local function hintBroadcast(message)
 			log("GOOD", "📢 hint broadcast to all players")
 			toast("📢 HINT SENT", message, THEME.good)
 		else
-			log("WARN", "no chat channel available — hint shown locally only")
+			log("WARN", "no chat channel — hint shown locally only")
 			toast("💬 HINT (local)", message, THEME.warn)
 		end
 	end)
@@ -1356,12 +1855,19 @@ local function markFound(m)
 			return m.remote:GetFullName()
 		end)
 		log("GOOD", "✅ BACKDOOR CONFIRMED → " .. tostring(fullPath))
-		bigBanner(
-			"🚨 BACKDOOR FOUND 🚨",
-			tostring(fullPath) .. "  [" .. m.remote.ClassName .. "]",
-			THEME.good
-		)
+		m.displayReason = "✔ executes code server-side — press EXEC"
+		if State.stats.confirmed == 1 then
+			bigBanner(
+				"🚨 BACKDOOR FOUND 🚨",
+				tostring(fullPath) .. "  [" .. m.remote.ClassName .. "]",
+				THEME.good
+			)
+		else
+			toast("🎯 HIT #" .. State.stats.confirmed, tostring(fullPath), THEME.good)
+		end
 		playSound()
+		renderResults()
+		rebuildTargets()
 		if State.settings.autoHint and not State.hintSentThisScan then
 			State.hintSentThisScan = true
 			hintBroadcast(CONFIG.HintMessage)
@@ -1385,19 +1891,24 @@ local function runScan()
 	renderResults()
 	UI.ScanBtn.Text = "⛔ SCANNING..."
 	UI.ScanBtn.BackgroundColor3 = THEME.bad
-	setProgress(0, "enumerating remotes...")
+	setProgress(0, "Walking the game tree...")
 	log("INFO", "scan started (sensitivity: " .. State.sensitivities[State.sensitivityIndex] .. ")")
 
 	local t0 = os.clock()
 	local remotes = {}
+	local reqFound = {}
+	local reqCounters = { scanned = 0, readable = 0 }
 	local count = 0
 	for _, obj in ipairs(game:GetDescendants()) do
 		count = count + 1
-		if obj.ClassName == "RemoteEvent" or obj.ClassName == "RemoteFunction" then
+		local cn = obj.ClassName
+		if cn == "RemoteEvent" or cn == "RemoteFunction" then
 			table.insert(remotes, obj)
+		elseif cn == "ModuleScript" or cn == "LocalScript" or cn == "Script" then
+			harvestRequireIds(obj, reqFound, reqCounters)
 		end
 		if count % CONFIG.EnumChunk == 0 then
-			setProgress(0.12 * math.min(1, count / 20000), "enumerating... " .. count .. " instances")
+			setProgress(0.12 * math.min(1, count / 20000), "Walking the game tree... " .. count .. " objects")
 			task.wait()
 		end
 		if #remotes >= CONFIG.MaxRemotes then
@@ -1405,12 +1916,34 @@ local function runScan()
 		end
 	end
 	State.stats.total = #remotes
-	log("INFO", "found " .. #remotes .. " remotes")
-	setProgress(0.15, "probing 0/" .. #remotes)
+	log("INFO", "found " .. #remotes .. " remotes · read " .. reqCounters.readable .. " script sources")
+
+	local reqList = {}
+	for _, data in pairs(reqFound) do
+		table.insert(reqList, data)
+	end
+	table.sort(reqList, function(a, b)
+		if a.count ~= b.count then
+			return a.count > b.count
+		end
+		return a.id < b.id
+	end)
+	while #reqList > 30 do
+		table.remove(reqList)
+	end
+	State.requires = reqList
+	renderRequires()
+	UI.ReqCountLbl.Text = #reqList .. " ids · " .. reqCounters.readable .. "/" .. reqCounters.scanned .. " sources read"
+	if #reqList > 0 then
+		log("GOOD", "harvested " .. #reqList .. " unique require() ids — see REQ tab")
+	end
+
+	setProgress(0.15, "Probing 0/" .. #remotes)
 
 	local markers = {}
 	local confirmedList = {}
 	local order = {}
+	State.results = order
 
 	local instConn
 	instConn = workspace.DescendantAdded:Connect(function(child)
@@ -1446,7 +1979,7 @@ local function runScan()
 			break
 		end
 		if os.clock() > sweepDeadline then
-			log("WARN", "sweep deadline reached")
+			log("WARN", "sweep deadline reached — stopping early")
 			break
 		end
 		local g = newGuid()
@@ -1454,6 +1987,9 @@ local function runScan()
 			remote = entry.remote,
 			score = entry.score,
 			reason = entry.reason,
+			displayReason = entry.reason ~= "" and entry.reason or "no name signals",
+			fullPath = "",
+			pathShort = "",
 			guid = g,
 			hits = 0,
 			reported = false,
@@ -1469,20 +2005,31 @@ local function runScan()
 			if entry.remote:IsA("RemoteEvent") then
 				pcall(entry.remote.FireServer, entry.remote, payload)
 			else
-				pcall(entry.remote.InvokeServer, entry.remote, payload)
+				local ok, res = pcall(entry.remote.InvokeServer, entry.remote, payload)
+				if not ok and type(res) == "string" then
+					m.errorSignal = res
+				elseif ok and res ~= nil then
+					m.returnSignal = res
+				end
 			end
 		end)
 		State.stats.probed = State.stats.probed + 1
 		if i % 5 == 0 or i == #scored then
-			setProgress(0.15 + 0.75 * (i / #scored), ("probing %d/%d — hits: %d"):format(i, #scored, State.stats.confirmed))
-			UI.StatsLbl.Text = ("total %d | filtered %d | probed %d | hits %d | %.1fs"):format(
+			setProgress(
+				0.15 + 0.73 * (i / #scored),
+				("Probing remotes %d/%d — hits: %d"):format(i, #scored, State.stats.confirmed)
+			)
+			UI.StatsLbl.Text = ("total %d | filtered out %d | probed %d | %.1fs"):format(
 				#remotes,
 				#remotes - #scored,
 				i,
-				State.stats.confirmed,
 				os.clock() - t0
 			)
 			setStats()
+		end
+		if State.stats.confirmed >= CONFIG.MaxHitsPerScan then
+			log("GOOD", "early exit — " .. State.stats.confirmed .. " confirmed backdoors is plenty")
+			break
 		end
 		if i % CONFIG.BatchSize == 0 then
 			task.wait(CONFIG.BatchPause)
@@ -1491,7 +2038,7 @@ local function runScan()
 		end
 	end
 
-	setProgress(0.92, "waiting for markers...")
+	setProgress(0.88, "Waiting for marker callbacks...")
 	local grace = (State.stats.confirmed > 0) and CONFIG.ExtraWindow or CONFIG.ConfirmWindow
 	local graceEnd = os.clock() + grace
 	while os.clock() < graceEnd do
@@ -1501,13 +2048,24 @@ local function runScan()
 	attrConn:Disconnect()
 
 	for _, m in ipairs(order) do
+		if m.errorSignal then
+			m.score = m.score + 2
+			m.displayReason = m.displayReason .. " · error-response+2"
+		end
+		if m.returnSignal ~= nil then
+			m.score = m.score + 2
+			m.displayReason = m.displayReason .. " · returned-value+2"
+		end
 		local ok, fullPath = pcall(function()
 			return m.remote:GetFullName()
 		end)
 		m.fullPath = ok and fullPath or (m.remote.Name .. "?")
 		m.pathShort = m.fullPath
-		if #m.pathShort > 46 then
-			m.pathShort = "…" .. m.pathShort:sub(-45)
+		if #m.pathShort > 40 then
+			m.pathShort = "…" .. m.pathShort:sub(-39)
+		end
+		if m.reported then
+			m.displayReason = "✔ executes code server-side — press EXEC"
 		end
 	end
 
@@ -1532,9 +2090,9 @@ local function runScan()
 	renderResults()
 	rebuildTargets()
 
+	setProgress(1, ("Done in %.1fs"):format(os.clock() - t0))
 	local elapsed = os.clock() - t0
-	setProgress(1, ("done in %.1fs"):format(elapsed))
-	UI.StatsLbl.Text = ("finished: %d probed | %d confirmed | %.1fs"):format(
+	UI.StatsLbl.Text = ("done: %d probed | %d confirmed | %.1fs"):format(
 		State.stats.probed,
 		State.stats.confirmed,
 		elapsed
@@ -1542,12 +2100,12 @@ local function runScan()
 	setStats()
 
 	if #confirmedList > 0 then
-		setStatus(("DONE — %d usable backdoor(s)! check EXECUTE tab"):format(#confirmedList))
+		setStatus(("DONE — %d confirmed backdoor(s)! Open EXEC."):format(#confirmedList))
 		log("GOOD", "scan done: " .. #confirmedList .. " confirmed in " .. string.format("%.1fs", elapsed))
 	else
-		setStatus("done — no exploitable remotes found")
+		setStatus("Done — no exploitable remotes found. Try HIGH.")
 		log("INFO", "scan done: nothing confirmed (" .. string.format("%.1fs", elapsed) .. ")")
-		toast("SCAN COMPLETE", "no confirmed backdoors — try HIGH sensitivity", THEME.dim)
+		toast("SCAN COMPLETE", "No confirmed backdoors — try HIGH sensitivity.", THEME.dim)
 	end
 
 	UI.ScanBtn.Text = "🔄 SCAN AGAIN"
@@ -1559,41 +2117,69 @@ UI.ScanBtn.MouseButton1Click:Connect(function()
 	task.spawn(runScan)
 end)
 
-MinBtn.MouseButton1Click:Connect(function()
-	State.minimized = not State.minimized
-	if State.minimized then
-		Content.Visible = false
-		TabRow.Visible = false
-		StatusBar.Visible = false
-		TweenService:Create(Root, TweenInfo.new(0.25, Enum.EasingStyle.Quart), { Size = UDim2.new(0, 560, 0, 38) }):Play()
-	else
-		TweenService:Create(Root, TweenInfo.new(0.25, Enum.EasingStyle.Quart), { Size = UDim2.new(0, 560, 0, 440) })
-			.Completed
-			:Wait()
-		Content.Visible = true
-		TabRow.Visible = true
-		StatusBar.Visible = true
-	end
-end)
-
-CloseBtn.MouseButton1Click:Connect(function()
-	State.destroyed = true
-	parentGui:Destroy()
-	log("INFO", "JzScanner closed")
-end)
-
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then
+local function collectGameRequires()
+	if State.collecting then
 		return
 	end
-	if input.KeyCode == Enum.KeyCode.Insert then
-		parentGui.Enabled = not parentGui.Enabled
+	State.collecting = true
+	UI.CollectBtn.Text = "⏳ READING..."
+	log("INFO", "harvesting require() ids from game scripts...")
+	local t0 = os.clock()
+	local found = {}
+	local counters = { scanned = 0, readable = 0 }
+	local count = 0
+	for _, obj in ipairs(game:GetDescendants()) do
+		count = count + 1
+		local cn = obj.ClassName
+		if cn == "ModuleScript" or cn == "LocalScript" or cn == "Script" then
+			harvestRequireIds(obj, found, counters)
+		end
+		if count % CONFIG.EnumChunk == 0 then
+			task.wait()
+		end
 	end
+	local list = {}
+	for _, data in pairs(found) do
+		table.insert(list, data)
+	end
+	table.sort(list, function(a, b)
+		if a.count ~= b.count then
+			return a.count > b.count
+		end
+		return a.id < b.id
+	end)
+	while #list > 30 do
+		table.remove(list)
+	end
+	State.requires = list
+	renderRequires()
+	State.collecting = false
+	UI.CollectBtn.Text = "🔄 FETCH"
+	if counters.readable == 0 then
+		UI.ReqCountLbl.Text = "no readable Sources in this executor"
+		log("WARN", "Source unreadable — require harvest unavailable here")
+		toast("⚠ NO SOURCE ACCESS", "Executor hides Script.Source — nothing to harvest.", THEME.warn)
+	else
+		UI.ReqCountLbl.Text = #list
+			.. " ids · "
+			.. counters.readable
+			.. "/"
+			.. counters.scanned
+			.. " sources read · "
+			.. string.format("%.1fs", os.clock() - t0)
+		log("GOOD", "harvested " .. #list .. " unique require() ids")
+		toast("💡 HARVEST DONE", #list .. " require(ID)s found in game scripts.", THEME.accent2)
+	end
+end
+
+UI.CollectBtn.MouseButton1Click:Connect(function()
+	task.spawn(collectGameRequires)
 end)
 
 updateTargetLabel()
 renderResults()
 renderLogs()
+renderRequires()
 outputLine("> jzscanner " .. VERSION .. " ready")
 log("INFO", "JzScanner " .. VERSION .. " loaded — INSERT toggles UI")
 
@@ -1616,6 +2202,18 @@ pcall(function()
 				end
 			end
 			return out
+		end,
+		GetRequires = function()
+			local out = {}
+			for _, rq in ipairs(State.requires) do
+				table.insert(out, rq.id)
+			end
+			return out
+		end,
+		CollectRequires = function()
+			if not State.collecting then
+				task.spawn(collectGameRequires)
+			end
 		end,
 		Execute = executeCurrent,
 		Broadcast = hintBroadcast,
