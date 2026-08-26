@@ -7,7 +7,8 @@ local SoundService = game:GetService("SoundService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerName = LocalPlayer.Name
 
-local VERSION = "4.4"
+local VERSION = "4.5"
+local BOOT_STAMP = os.date("%H:%M:%S")
 
 local ROOT_W = 470
 local ROOT_H = 370
@@ -173,14 +174,17 @@ end
 
 local function bindClick(btn, fn)
 	State.bindCount = State.bindCount + 1
+	pcall(function()
+		btn:SetAttribute("JZ_WIRED", true)
+	end)
 	local last = 0
-	local function fire()
+	local function fire(...)
 		local now = tick()
 		if now - last < 0.25 then
 			return
 		end
 		last = now
-		local ok, err = pcall(fn)
+		local ok, err = pcall(fn, ...)
 		if not ok then
 			log("BAD", "button error: " .. tostring(err))
 		end
@@ -250,16 +254,53 @@ local function copyText(t)
 	return false
 end
 
+local CONTAINER_GETTERS = {
+	function()
+		if type(gethui) == "function" then
+			return gethui()
+		end
+	end,
+	function()
+		return game:GetService("CoreGui")
+	end,
+	function()
+		return LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	end,
+}
+
+local LEGACY_NAMES = {
+	"JzScannerV4",
+	"JzScannerRoot",
+	"JzScannerBall",
+	"JzScannerToasts",
+	"JzScannerBanner",
+	"SecretBackdoorScannerV3",
+}
+
+local killedGhosts = 0
+
+local function sweepOldGuis()
+	for _, getter in ipairs(CONTAINER_GETTERS) do
+		local ok, container = pcall(getter)
+		if ok and container then
+			for _, nm in ipairs(LEGACY_NAMES) do
+				pcall(function()
+					local child = container:FindFirstChild(nm)
+					while child do
+						child:Destroy()
+						killedGhosts = killedGhosts + 1
+						child = container:FindFirstChild(nm)
+					end
+				end)
+			end
+		end
+	end
+end
+
+sweepOldGuis()
+
 local parentGui
 do
-	local existing
-	pcall(function()
-		existing = game:GetService("CoreGui"):FindFirstChild("JzScannerV4")
-	end)
-	if existing then
-		existing:Destroy()
-	end
-
 	local function makeGui(parent)
 		local sg = create("ScreenGui", {
 			Name = "JzScannerV4",
@@ -284,22 +325,17 @@ do
 	end
 
 	parentGui = nil
-	pcall(function()
-		if type(gethui) == "function" then
-			parentGui = makeGui(gethui())
+	for _, getter in ipairs(CONTAINER_GETTERS) do
+		if parentGui then
+			break
 		end
-	end)
-	if not parentGui then
-		pcall(function()
-			parentGui = makeGui(game:GetService("CoreGui"))
-		end)
+		local okGet, target = pcall(getter)
+		if okGet and target then
+			parentGui = makeGui(target)
+		end
 	end
 	if not parentGui then
-		local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui") or Players.LocalPlayer:WaitForChild("PlayerGui", 3)
-		parentGui = makeGui(pg)
-	end
-	if not parentGui then
-		parentGui = makeGui(game:GetService("Players").LocalPlayer)
+		log("WARN", "no usable gui container found — ui cannot display")
 	end
 end
 
@@ -340,10 +376,10 @@ local function toast(title, body, color)
 		ZIndex = 42,
 		Parent = card,
 	})
-	local list = parentGui:FindFirstChild("ToastStack")
+	local list = parentGui:FindFirstChild("JzScannerToasts")
 	if not list then
 		list = create("Frame", {
-			Name = "ToastStack",
+			Name = "JzScannerToasts",
 			AnchorPoint = Vector2.new(0.5, 0),
 			Position = UDim2.new(0.5, 0, 0, 10),
 			Size = UDim2.new(0, 350, 0, 0),
@@ -384,12 +420,12 @@ local function toast(title, body, color)
 end
 
 local function bigBanner(mainText, subText, color)
-	local old = parentGui:FindFirstChild("FoundBanner")
+	local old = parentGui:FindFirstChild("JzScannerBanner")
 	if old then
 		old:Destroy()
 	end
 	local b = create("Frame", {
-		Name = "FoundBanner",
+		Name = "JzScannerBanner",
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, -100),
 		Size = UDim2.new(0, 460, 0, 78),
@@ -455,7 +491,7 @@ task.spawn(function()
 end)
 
 local Root = create("Frame", {
-	Name = "Root",
+	Name = "JzScannerRoot",
 	Size = UDim2.new(0, ROOT_W, 0, ROOT_H),
 	Position = UDim2.new(0.5, -ROOT_W / 2, 0.5, -ROOT_H / 2),
 	BackgroundColor3 = THEME.bg,
@@ -477,14 +513,15 @@ local TitleBar = create("Frame", {
 })
 
 create("TextLabel", {
-	Size = UDim2.new(0, 300, 1, 0),
+	Size = UDim2.new(1, -80, 1, 0),
 	Position = UDim2.new(0, 12, 0, 0),
 	BackgroundTransparency = 1,
-	Text = "JzScanner " .. VERSION,
+	Text = "JzScanner " .. VERSION .. " · boot " .. BOOT_STAMP,
 	TextColor3 = THEME.text,
-	TextSize = 15,
+	TextSize = 13,
 	Font = Enum.Font.GothamBold,
 	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
 	Parent = TitleBar,
 })
 
@@ -628,7 +665,7 @@ for i, def in ipairs(TAB_DEFS) do
 end
 
 local Ball = create("TextButton", {
-	Name = "Ball",
+	Name = "JzScannerBall",
 	AutoButtonColor = false,
 	BackgroundColor3 = THEME.bg,
 	BackgroundTransparency = 0.05,
@@ -726,6 +763,13 @@ do
 				end
 			end
 		end)
+		for _, e in ipairs(cache) do
+			e.placeId = tonumber(e.placeId) or 0
+			e.name = (type(e.name) == "string") and e.name or nil
+			e.remotes = (type(e.remotes) == "table") and e.remotes or {}
+			e.reqs = (type(e.reqs) == "table") and e.reqs or {}
+			e.last = tonumber(e.last) or 0
+		end
 	end
 
 	local function saveStore()
@@ -1938,7 +1982,7 @@ create("TextLabel", {
 	BackgroundTransparency = 1,
 	Text = "JzScanner "
 		.. VERSION
-		.. "\nengine: guid-traced payloads + attribute/instance dual-marker confirmation\nsignals: 39 weighted keywords · random-name detection · invoke responses\ngames with confirmed backdoors are remembered in the SAVED tab",
+		.. "\nengine: guid-traced payloads + attribute/instance dual-marker confirmation\nsignals: 39 weighted keywords · random-name detection · invoke responses\ngames with confirmed backdoors are remembered in the SAVED tab\ncheck the title bar boot time to spot stale duplicate windows",
 	TextColor3 = THEME.dim,
 	TextSize = 10,
 	Font = Enum.Font.Code,
@@ -2568,12 +2612,15 @@ end
 
 local function runScan()
 	if State.scanning then
+		log("WARN", "scan ignored — one already running")
 		return
 	end
 	State.scanning = true
+	UI.ScanStatus.Text = "Engine starting..."
 	UI.ScanBtn.Text = "SCANNING..."
 	UI.ScanBtn.BackgroundColor3 = THEME.bad
-	log("INFO", "scan button pressed — engine starting")
+	log("INFO", "scan button pressed at " .. os.date("%H:%M:%S") .. " — engine starting")
+	toast("SCAN STARTED", "Probing remotes — watch the progress bar.", THEME.accent)
 	local ok, err = pcall(runScanCore)
 	State.scanning = false
 	UI.ScanBtn.Text = "SCAN AGAIN"
@@ -2590,25 +2637,42 @@ bindClick(UI.ScanBtn, function()
 	task.spawn(runScan)
 end)
 
-updateTargetLabel()
-renderResults()
-renderLogs()
-renderRequires()
-renderHistory()
+local initSteps = {
+	{ "target label", updateTargetLabel },
+	{ "results", renderResults },
+	{ "logs", renderLogs },
+	{ "requires", renderRequires },
+	{ "history", renderHistory },
+}
+for _, step in ipairs(initSteps) do
+	local ok, err = pcall(step[2])
+	if not ok then
+		log("BAD", "init " .. step[1] .. " failed: " .. tostring(err))
+	end
+end
+
 outputLine("> jzscanner " .. VERSION .. " ready · " .. State.bindCount .. " buttons wired")
 log(
 	"INFO",
 	"JzScanner "
 		.. VERSION
-		.. " loaded · "
+		.. " booted "
+		.. BOOT_STAMP
+		.. " · "
 		.. #History.GetAll()
 		.. " saved game(s)"
-		.. (History.IsPersisted() and "" or " (no writefile)")
 		.. " · "
 		.. State.bindCount
 		.. " buttons wired"
+		.. " · "
+		.. killedGhosts
+		.. " stale window(s) removed"
 )
 log("INFO", "INSERT toggles UI · title-bar drag moves window · _ shrinks to ball")
+
+if killedGhosts > 0 then
+	toast("CLEANUP", killedGhosts .. " stale JzScanner window(s) removed.", THEME.warn)
+end
 
 if #History.GetAll() > 0 then
 	History.RefreshNames()
@@ -2618,6 +2682,7 @@ pcall(function()
 	local genv = getgenv and getgenv() or _G
 	genv.JzScanner = {
 		Version = VERSION,
+		BootStamp = BOOT_STAMP,
 		Config = CONFIG,
 		State = State,
 		Scan = function()
@@ -2669,4 +2734,14 @@ if State.settings.autoScan then
 	end)
 end
 
-print("JzScanner " .. VERSION .. " loaded! Press INSERT to toggle. " .. State.bindCount .. " buttons wired.")
+print(
+	"JzScanner "
+		.. VERSION
+		.. " booted "
+		.. BOOT_STAMP
+		.. "! INSERT to toggle. "
+		.. State.bindCount
+		.. " buttons wired, "
+		.. killedGhosts
+		.. " stale windows removed."
+)
