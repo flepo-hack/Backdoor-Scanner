@@ -2235,13 +2235,49 @@ bindClick(UI.CopyAllBtn, function()
 	end
 end)
 
-local function updateRequirePreview()
-	local id = UI.RequireIdBox.Text:match("%d+") or "ID"
+local function buildRequireCall()
+	local idRaw = UI.RequireIdBox.Text
 	local args = UI.RequireArgsBox.Text
+	-- The user may have typed a full require expression (e.g. require(123).load("x"))
+	-- straight into the asset-id box. Send it as-is, never split it apart.
+	if idRaw:match("require%s*%(") then
+		if args ~= "" then
+			local c = args:match("^%s*(.)")
+			if c == "." or c == ":" or c == "(" or c == "[" then
+				return idRaw .. args
+			end
+			return idRaw .. "." .. args
+		end
+		return idRaw
+	end
+	-- whole expression in the args box
+	if args:match("require%s*%(") then
+		return args
+	end
+	local id = idRaw:match("%d+")
+	if not id then
+		return nil
+	end
 	if args == "" then
 		args = '"' .. PlayerName .. '"'
+		return "require(" .. id .. ")(" .. args .. ")"
 	end
-	UI.RequirePreview.Text = ("preview: require(%s)(%s)"):format(id, args)
+	local c = args:match("^%s*(.)")
+	-- ".load(\"x\")", ":method(...)", "(...)", "[...]" -> chain after require(...)
+	if c == "." or c == ":" or c == "(" or c == "[" then
+		return "require(" .. id .. ")" .. args
+	end
+	-- "load(\"x\")" (identifier followed by a call) -> require(id).load("x")
+	if args:match("^%s*%g+%s*%b()") then
+		return "require(" .. id .. ")." .. args
+	end
+	-- otherwise treat args as a plain argument list/value -> require(id)(ARGS)
+	return "require(" .. id .. ")(" .. args .. ")"
+end
+
+local function updateRequirePreview()
+	local built = buildRequireCall()
+	UI.RequirePreview.Text = "preview: " .. (built or "require(<id>)(...)— enter an asset id")
 end
 
 UI.RequireIdBox:GetPropertyChangedSignal("Text"):Connect(updateRequirePreview)
@@ -2407,17 +2443,16 @@ local function executeCurrent()
 	local mode = State.modes[State.modeIndex]
 	local code
 	if mode == "REQUIRE" then
-		local id = UI.RequireIdBox.Text:match("%d+")
-		if not id then
+		local built = buildRequireCall()
+		if not built then
 			outputLine("[x] invalid asset id")
 			return
 		end
-		local args = UI.RequireArgsBox.Text
-		if args == "" then
-			args = '"' .. PlayerName .. '"'
-		end
-		code = ("require(%s)(%s)"):format(id, args)
+		code = built
 	else
+		-- LUA mode: pass the client-side code through unchanged and run it
+		-- server-side through the remote. Identical semantics to executing
+		-- the script locally, only it executes on the server instead.
 		code = UI.CodeBox.Text
 		if code == "" then
 			outputLine("[x] empty code")
